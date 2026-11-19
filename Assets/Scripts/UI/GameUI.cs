@@ -580,7 +580,8 @@ namespace LLTacticalWar
                 var p = kv.Key;
                 var tag = kv.Value;
                 if (p == null) { deadTags.Add(p); Destroy(tag.rt.gameObject); continue; }
-                var pos = WorldToCanvas(p.transform.position + Vector3.up * 2.55f, out bool vis);
+                // a rider sits higher: its tag rides up with it, clear of the helmet
+                var pos = WorldToCanvas(p.transform.position + Vector3.up * (2.55f + p.model.Lift * 0.6f), out bool vis);
                 tag.rt.gameObject.SetActive(vis && p.isAlive && p.gameObject.activeInHierarchy);
                 tag.rt.anchoredPosition = pos;
                 tag.label.text = (p.broken ? "BROKEN" : p.playerClass.ClassName.ToUpper()) + "  " + p.currentHealth;

@@ -4,7 +4,7 @@ using UnityEngine;
 namespace LLTacticalWar
 {
     // The art bible, as code. Every colour in the game reads from here.
-    //   Style : toy-soldier war table - chunky flat-shaded primitives on a painted board,
+    //   Style : toy-soldier war table - KayKit chibi figures on a chunky flat-shaded board,
     //           two banner colours that read from across the map.
     //   Mood  : late-morning sun from the south-west, warm key, cool sky bounce.
     public static class Palette
@@ -36,7 +36,8 @@ namespace LLTacticalWar
         public static readonly Color Skin       = H("#E7C29A");
         public static readonly Color Steel      = H("#B8BEC6");
         public static readonly Color Wood       = H("#8B5A33");
-        public static readonly Color Horse      = H("#7A4E2E");
+        public static readonly Color Horse      = H("#B97A55");   // warm tan from the KayKit atlases
+        public static readonly Color HorseDark  = H("#4A3428");
 
         // Shadow, accent, light
         public static readonly Color Ink        = H("#2B3340");

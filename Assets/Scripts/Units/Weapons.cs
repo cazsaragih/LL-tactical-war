@@ -19,12 +19,12 @@ namespace LLTacticalWar
     {
         static readonly Dictionary<WeaponKind, WeaponInfo> table = new Dictionary<WeaponKind, WeaponInfo>
         {
-            [WeaponKind.Sword]  = W(WeaponKind.Sword,  "Iron Sword",  5, 90, 0,  1, 1),
-            [WeaponKind.Spear]  = W(WeaponKind.Spear,  "Iron Lance",  7, 80, 0,  1, 1),
-            [WeaponKind.Club]   = W(WeaponKind.Club,   "Iron Club",   8, 70, 0,  1, 1),
-            [WeaponKind.Bow]    = W(WeaponKind.Bow,    "Iron Bow",    6, 85, 0,  2, 2),
-            [WeaponKind.Dagger] = W(WeaponKind.Dagger, "Iron Dagger", 3, 95, 10, 1, 1),
-            [WeaponKind.Staff]  = W(WeaponKind.Staff,  "Fire",        5, 90, 0,  1, 2, true),
+            [WeaponKind.Sword]  = W(WeaponKind.Sword,  "Iron Sword",    5, 90, 0,  1, 1),
+            [WeaponKind.Spear]  = W(WeaponKind.Spear,  "Iron Lance",    7, 80, 0,  1, 1),
+            [WeaponKind.Club]   = W(WeaponKind.Club,   "Iron Axe",      8, 70, 0,  1, 1),
+            [WeaponKind.Bow]    = W(WeaponKind.Bow,    "Iron Crossbow", 6, 85, 0,  2, 2),
+            [WeaponKind.Dagger] = W(WeaponKind.Dagger, "Iron Dagger",   3, 95, 10, 1, 1),
+            [WeaponKind.Staff]  = W(WeaponKind.Staff,  "Fire",          5, 90, 0,  1, 2, true),
         };
 
         // The triangle: each key beats its value. Bow, Dagger and Staff sit outside it.

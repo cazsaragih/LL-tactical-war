@@ -7,7 +7,8 @@ using UnityEngine;
 namespace LLTacticalWar
 {
     // The 1v1 battle scene. It plays the strike list Combat.Resolve already decided, on a stage
-    // far from the board: wind-up, lunge or shot, hit-stop, shake, numbers, then the result.
+    // far from the board: the attack clip, timed so its blow (or release) lands with the lunge
+    // or the shot, then hit-stop, shake, the hit, dodge or death clip, numbers, the result.
     // It decides nothing, so skipping it (X) leaves the outcome exactly the same. Holding Z
     // plays it at double speed. Every time-scale change in a battle goes through ApplyTime.
     public class BattleScene : MonoBehaviour
@@ -31,9 +32,8 @@ namespace LLTacticalWar
             public bool left, down;
             public int hp;
             public Vector3 Forward => left ? Vector3.right : Vector3.left;
-            float Lift => unit.playerClass.Mounted ? 0.62f : 0f;
-            public Vector3 Chest => t.position + Vector3.up * (1.15f + Lift);
-            public Vector3 Head => t.position + Vector3.up * (2.05f + Lift);
+            public Vector3 Chest => t.position + Vector3.up * (0.9f + model.Lift);
+            public Vector3 Head => t.position + Vector3.up * (2.0f + model.Lift);
         }
 
         static readonly Vector3 CamHome = new Vector3(0f, 2.5f, -9f);
@@ -247,6 +247,8 @@ namespace LLTacticalWar
             }
             SettleActor(att, hpA, brokeA);
             SettleActor(def, hpD, brokeD);
+            if (hpA > 0 && hpD <= 0) att.model.Cheer();
+            if (hpD > 0 && hpA <= 0) def.model.Cheer();
         }
 
         void SettleActor(Actor a, int hp, bool broke)
@@ -278,16 +280,17 @@ namespace LLTacticalWar
             StartCoroutine(CameraTo(new Vector3(tx * 0.4f, 1.9f, -7f), new Vector3(tx * 0.6f, 1.1f, 0f), 27f, 0.3f));
         }
 
+        // The step back rides the clip's wind-up and the lunge arrives on its impact frame.
         IEnumerator Melee(Actor by, Actor target, Strike s)
         {
             var dir = by.Forward;
             var back = by.home - dir * 0.3f;
             var contact = target.home - dir * (by.unit.playerClass.Mounted ? 1.5f : 1.05f);
-            by.model.Swing(0.5f);   // wind-up 0-35%, blow at 35-55%: lands with the lunge
-            yield return Tween(0.17f, k => by.t.localPosition = Vector3.Lerp(by.home, back, k), Ease.OutCubic);
+            float blow = by.model.Swing(0.42f);
+            yield return Tween(blow * 0.45f, k => by.t.localPosition = Vector3.Lerp(by.home, back, k), Ease.OutCubic);
             AudioBank.I.Play(Sfx.Step, 0.7f);
-            if (s.result == StrikeResult.Miss) StartCoroutine(Dodge(target, dir, 0f));
-            yield return Tween(0.11f, k => by.t.localPosition = Vector3.Lerp(back, contact, k), Ease.OutCubic);
+            if (s.result == StrikeResult.Miss) StartCoroutine(Dodge(target, 0f));
+            yield return Tween(blow * 0.55f, k => by.t.localPosition = Vector3.Lerp(back, contact, k), Ease.OutCubic);
             if (!Skipped) yield return Impact(by, target, s, target.Chest - dir * 0.25f);
             yield return Wait(0.1f);
             yield return Tween(0.26f, k => by.t.localPosition = Vector3.Lerp(contact, by.home, k), Ease.InOutSine);
@@ -297,13 +300,12 @@ namespace LLTacticalWar
         {
             bool miss = s.result == StrikeResult.Miss;
             var dir = by.Forward;
-            by.model.Swing(0.6f);
-            yield return Wait(0.26f);
+            yield return Wait(by.model.Swing(0.3f));   // the crossbow kicks on the release frame
             AudioBank.I.Play(Sfx.Arrow, 0.9f);
-            var from = by.t.position + Vector3.up * 1.35f + dir * 0.45f;
+            var from = by.model.RightHand.position + dir * 0.5f;
             var hitAt = target.Chest - dir * 0.15f;
             var to = miss ? hitAt + dir * 3.5f + Vector3.down * 1.1f : hitAt;
-            if (miss) StartCoroutine(Dodge(target, dir, 0.12f));
+            if (miss) StartCoroutine(Dodge(target, 0.05f));
             float arc = 0.5f + Vector3.Distance(from, to) * 0.06f;
             var prev = from;
             arrow.position = from;
@@ -324,13 +326,13 @@ namespace LLTacticalWar
         {
             bool miss = s.result == StrikeResult.Miss;
             var dir = by.Forward;
-            by.model.Swing(0.7f);
             AudioBank.I.Play(Sfx.Skill, 0.8f);
-            yield return Wait(0.3f);
-            var from = by.t.position + Vector3.up * 1.7f + dir * 0.55f;
+            yield return Wait(by.model.Swing(0.32f));   // the bolt leaves as the casting hand snaps forward
+            var from = by.model.RightHand.position + dir * 0.35f;
+            Fx.I?.Embers(from);
             var hitAt = target.Chest - dir * 0.2f;
             var to = miss ? hitAt + dir * 4f + Vector3.up * 0.6f : hitAt;
-            if (miss) StartCoroutine(Dodge(target, dir, 0.12f));
+            if (miss) StartCoroutine(Dodge(target, 0.05f));
             bolt.position = from;
             bolt.rotation = Quaternion.LookRotation(to - from);
             bolt.gameObject.SetActive(true);
@@ -358,7 +360,7 @@ namespace LLTacticalWar
             }
             bool crit = s.result == StrikeResult.Crit;
             var tc = Palette.Team(target.unit.team);
-            target.model.Punch();
+            target.model.Hit(crit || s.breaks);
             if (crit)
             {
                 Fx.I?.CritSparks(at, tc);
@@ -403,12 +405,13 @@ namespace LLTacticalWar
             Shake(0.4f);
         }
 
-        // Reactions run on this component so the attacker's return can overlap them.
+        // Reactions run on this component so the attacker's return can overlap them. The hit
+        // clip does the flinch; the root only slides, with a wobble when the blow breaks.
 
         IEnumerator Knockback(Actor a, Vector3 push, float distance, bool stagger)
         {
             var to = a.home + push * distance;
-            float lean = stagger ? 20f : 8f;
+            float lean = stagger ? 10f : 0f;
             yield return Tween(0.08f, k => { a.t.localPosition = Vector3.Lerp(a.home, to, k); a.t.localRotation = a.baseRot * Quaternion.Euler(-lean * k, 0f, 0f); }, Ease.OutCubic);
             if (a.down) yield break;
             if (stagger)
@@ -416,13 +419,11 @@ namespace LLTacticalWar
             yield return Tween(stagger ? 0.35f : 0.24f, k => { a.t.localPosition = Vector3.Lerp(to, a.home, k); a.t.localRotation = a.baseRot * Quaternion.Euler(-lean * (1f - k), 0f, 0f); }, Ease.InOutSine);
         }
 
-        IEnumerator Dodge(Actor a, Vector3 away, float delay)
+        // The dodge clip hops back from the blow and hands back to idle on its own.
+        IEnumerator Dodge(Actor a, float delay)
         {
             yield return Wait(delay);
-            var to = a.home + away * 0.55f + Vector3.forward * 0.4f;
-            yield return Tween(0.13f, k => a.t.localPosition = Vector3.Lerp(a.home, to, k) + Vector3.up * Mathf.Sin(k * Mathf.PI) * 0.25f, Ease.OutCubic);
-            yield return Wait(0.2f);
-            yield return Tween(0.22f, k => a.t.localPosition = Vector3.Lerp(to, a.home, k), Ease.InOutSine);
+            a.model.Dodge();
         }
     }
 }
