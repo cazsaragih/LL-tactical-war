@@ -9,10 +9,10 @@ using UnityEngine.SceneManagement;
 namespace LLTacticalWar
 {
     // Boots the whole game from one GameObject in the Main scene and owns the shell:
-    // Title -> Playing <-> Paused -> Ended. In 2015 the tactics map and the battle were
-    // two scene objects toggled on and off ("TacticScene" / "WarScene"); that is kept.
-    // The turn and battle logic now sit on an always-active Systems object, because a
-    // deactivated GameObject stops its coroutines.
+    // Title -> Playing <-> Paused -> Ended. The tactics map and the battle stage are two
+    // scene objects toggled on and off (as the 2015 "TacticScene" / "WarScene" were). The turn
+    // and battle logic sit on an always-active Systems object, because a deactivated
+    // GameObject stops its coroutines.
     public class GameManager : MonoBehaviour
     {
         public static GameManager I;
@@ -23,7 +23,7 @@ namespace LLTacticalWar
 
         public bool InBattle;
         public Transform TacticRoot { get; private set; }
-        public Transform WarRoot { get; private set; }
+        public Transform BattleRoot { get; private set; }
 
         Camera cam;
         CinemachineBrain brain;
@@ -63,18 +63,17 @@ namespace LLTacticalWar
             boardCenter.position = map.Center;
             Fx.I.CreateMotes(TacticRoot, map.Center + Vector3.up * 3f, new Vector3(map.tileX * map.tileSize, 4f, map.tileZ * map.tileSize));
 
-            // war scene (visuals) - far away from the board
-            WarRoot = new GameObject("WarScene").transform;
-            WarRoot.SetParent(transform, false);
-            WarRoot.position = new Vector3(600f, 0f, 0f);
+            // battle stage (visuals) - far away from the board
+            BattleRoot = new GameObject("BattleScene").transform;
+            BattleRoot.SetParent(transform, false);
+            BattleRoot.position = new Vector3(600f, 0f, 0f);
 
             // systems (always active)
             var systems = new GameObject("Systems");
             systems.transform.SetParent(transform, false);
             systems.AddComponent<TurnManager>();
-            var war = systems.AddComponent<WarSceneManager>();
-            war.Build(WarRoot);
-            WarRoot.gameObject.SetActive(false);
+            systems.AddComponent<BattleScene>().Build(BattleRoot);
+            BattleRoot.gameObject.SetActive(false);
 
             BuildCameras();
             TurnManager.instance.SpawnArmies();
@@ -258,12 +257,11 @@ namespace LLTacticalWar
 
         // ---------------- scene toggle + ending ----------------
 
-        public void ShowWar(bool war)
+        public void ShowBattle(bool on)
         {
             brain.DefaultBlend = new CinemachineBlendDefinition(CinemachineBlendDefinition.Styles.Cut, 0f);
-            TacticRoot.gameObject.SetActive(!war);
-            WarRoot.gameObject.SetActive(war);
-            RenderSettings.fogStartDistance = war ? 70f : 55f;
+            TacticRoot.gameObject.SetActive(!on);
+            BattleRoot.gameObject.SetActive(on);
             StartCoroutine(RestoreBlend());
         }
 
@@ -286,7 +284,7 @@ namespace LLTacticalWar
             AudioBank.I.Play(victory ? Sfx.Victory : Sfx.Defeat);
             if (victory) Fx.I.Confetti(cam.transform.position + cam.transform.forward * 8f - Vector3.up * 2f);
             var t = TurnManager.instance;
-            string stats = "ROUNDS " + t.round + "     BATTLES " + t.battlesFought + "     ENEMY UNITS ROUTED " + t.enemiesRouted + "     UNITS LOST " + t.unitsLost;
+            string stats = "ROUNDS " + t.round + "     BATTLES " + t.battlesFought + "     ENEMIES DEFEATED " + t.enemiesDefeated + "     UNITS LOST " + t.unitsLost;
             var menu = new KeyMenu();
             menu.Add("Play Again", Restart);
             menu.Add("Quit Game", QuitGame);

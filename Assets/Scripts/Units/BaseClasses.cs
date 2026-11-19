@@ -1,8 +1,7 @@
 namespace LLTacticalWar
 {
-    // The six 2015 classes. Names, IDs, descriptions, troop counts, attack ranges and terrain
-    // movement are the original values. In 2015 every class had identical HP/ATK/DEF
-    // (100/20/0); small differences now follow each class's own description.
+    // The six 2015 classes. Names, IDs, descriptions, weapons and terrain movement are the
+    // original values. Stats are on the 1v1 scale and follow each class's own description.
 
     public class BaseClass_Apprentice : BaseClass
     {
@@ -11,12 +10,9 @@ namespace LLTacticalWar
             ClassID = 1; ClassName = "Apprentice"; ClassType = "Mage";
             ClassDescription = "Ranged character with powerful magic and low defense";
             Weapon = WeaponKind.Staff;
-            BaseHP = 90; BaseAttack = 25; BaseDefense = 0; TotalUnits = 100;
-            TileAttack = 2; WarSpeed = 0.95f;
+            Base = new Stats { HP = 20, Str = 0, Mag = 10, Skl = 7, Spd = 7, Lck = 5, Def = 3, Res = 8 };
             plainMove = 2; forestMove = 1; desertMove = 3; mountainMove = 3; fortMove = 1;
         }
-        public override void BoostStats() { BaseHP += 150; BaseAttack += 10; }
-        public override BaseClass Fresh() => new BaseClass_Apprentice();
     }
 
     public class BaseClass_Archer : BaseClass
@@ -26,12 +22,9 @@ namespace LLTacticalWar
             ClassID = 2; ClassName = "Archer"; ClassType = "Archer";
             ClassDescription = "Ranged character with high agility and low defense";
             Weapon = WeaponKind.Bow;
-            BaseHP = 90; BaseAttack = 18; BaseDefense = 2; TotalUnits = 50;
-            TileAttack = 2; WarSpeed = 1.15f;
+            Base = new Stats { HP = 22, Str = 8, Mag = 0, Skl = 10, Spd = 9, Lck = 4, Def = 4, Res = 3 };
             plainMove = 2; forestMove = 1; desertMove = 1; mountainMove = 3; fortMove = 3;
         }
-        public override void BoostStats() { BaseHP += 150; BaseAttack += 10; }
-        public override BaseClass Fresh() => new BaseClass_Archer();
     }
 
     public class BaseClass_Brawler : BaseClass
@@ -41,12 +34,9 @@ namespace LLTacticalWar
             ClassID = 3; ClassName = "Brawler"; ClassType = "Beastman";
             ClassDescription = "Melee character with heavy weapons and high defense";
             Weapon = WeaponKind.Club;
-            BaseHP = 120; BaseAttack = 22; BaseDefense = 8; TotalUnits = 50;
-            TileAttack = 1; WarSpeed = 0.9f;
+            Base = new Stats { HP = 32, Str = 12, Mag = 0, Skl = 5, Spd = 5, Lck = 2, Def = 6, Res = 1 };
             plainMove = 2; forestMove = 3; desertMove = 1; mountainMove = 1; fortMove = 3;
         }
-        public override void BoostStats() { BaseHP += 150; BaseAttack += 10; }
-        public override BaseClass Fresh() => new BaseClass_Brawler();
     }
 
     public class BaseClass_Dragoon : BaseClass
@@ -56,12 +46,9 @@ namespace LLTacticalWar
             ClassID = 4; ClassName = "Dragoon"; ClassType = "Cavalier";
             ClassDescription = "Melee character with high attack and high defense";
             Weapon = WeaponKind.Spear; Mounted = true;
-            BaseHP = 110; BaseAttack = 26; BaseDefense = 6; TotalUnits = 50;
-            TileAttack = 1; WarSpeed = 1.35f;
+            Base = new Stats { HP = 28, Str = 10, Mag = 0, Skl = 7, Spd = 7, Lck = 3, Def = 8, Res = 2 };
             plainMove = 4; forestMove = 1; desertMove = 1; mountainMove = 1; fortMove = 3;
         }
-        public override void BoostStats() { BaseHP += 150; BaseAttack += 10; }
-        public override BaseClass Fresh() => new BaseClass_Dragoon();
     }
 
     public class BaseClass_Fighter : BaseClass
@@ -71,12 +58,9 @@ namespace LLTacticalWar
             ClassID = 5; ClassName = "Fighter"; ClassType = "Soldier";
             ClassDescription = "Melee character with balanced status";
             Weapon = WeaponKind.Sword;
-            BaseHP = 100; BaseAttack = 20; BaseDefense = 4; TotalUnits = 100;
-            TileAttack = 1; WarSpeed = 1f;
+            Base = new Stats { HP = 26, Str = 9, Mag = 0, Skl = 9, Spd = 8, Lck = 5, Def = 7, Res = 2 };
             plainMove = 2; forestMove = 3; desertMove = 1; mountainMove = 1; fortMove = 3;
         }
-        public override void BoostStats() { BaseHP += 150; BaseAttack += 10; }
-        public override BaseClass Fresh() => new BaseClass_Fighter();
     }
 
     public class BaseClass_Thief : BaseClass
@@ -86,11 +70,8 @@ namespace LLTacticalWar
             ClassID = 6; ClassName = "Thief"; ClassType = "Bandit";
             ClassDescription = "Melee character with high agility and low defense";
             Weapon = WeaponKind.Dagger;
-            BaseHP = 85; BaseAttack = 22; BaseDefense = 0; TotalUnits = 50;
-            TileAttack = 1; WarSpeed = 1.25f;
+            Base = new Stats { HP = 21, Str = 7, Mag = 0, Skl = 11, Spd = 12, Lck = 7, Def = 3, Res = 3 };
             plainMove = 2; forestMove = 3; desertMove = 3; mountainMove = 1; fortMove = 1;
         }
-        public override void BoostStats() { BaseHP += 150; BaseAttack += 10; }
-        public override BaseClass Fresh() => new BaseClass_Thief();
     }
 }

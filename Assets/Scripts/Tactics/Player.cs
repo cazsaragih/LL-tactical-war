@@ -4,9 +4,8 @@ using UnityEngine;
 
 namespace LLTacticalWar
 {
-    // A unit on the tactics board: one general plus the troop count they bring to battle.
-    // Ported from the 2015 Player / HumanPlayer / BotEnemy (the two subclasses were empty, so the
-    // side is now a Team field).
+    // A unit on the tactics board. It fights one on one through Combat. Ported from the 2015
+    // Player / HumanPlayer / BotEnemy (the two subclasses were empty, so the side is now a Team field).
     public class Player : MonoBehaviour
     {
         public Team team;
@@ -15,56 +14,41 @@ namespace LLTacticalWar
         public float moveSpeed = 6f;
 
         public bool isTurnOver;
-        public bool moveEnabled = true;
-        public bool attackEnabled = true;
-        public bool waitEnabled = true;
 
-        public int maxHealth;
+        public Stats stats;
         public int currentHealth;
-        public int startUnits;
-        public int currentUnits;
-        public int modifiedAttack;
-        public int modifiedDefense;
+        public int MaxHP => stats.HP;
         public bool isAlive = true;
-
-        public enum Direction { North, East, South, West }
-        public Direction playerDirection;
+        public bool broken;   // hit with triangle advantage: no counters until its side's next phase
+        public WeaponInfo Weapon { get; private set; }
 
         public UnitModel model;
 
         public string DisplayName => (team == Team.Player ? "" : "Enemy ") + playerClass.ClassName;
+        public TileMapInfo Tile => TileMap.instance.tiles[tilePosition];
 
         public void Init(BaseClass cls, Team side)
         {
             team = side;
             playerClass = cls;
-            playerClass.BoostStats();   // the general is the boosted version of the class
             playerClass.TerrainEffect(TileMap.instance.terrainType);
-            maxHealth = currentHealth = playerClass.BaseHP;
-            startUnits = currentUnits = playerClass.TotalUnits;
-            modifiedAttack = playerClass.BaseAttack;
-            modifiedDefense = playerClass.BaseDefense;
-            model = UnitFactory.Create(cls, side, true, transform);
+            stats = cls.Base;
+            currentHealth = MaxHP;
+            Weapon = Weapons.Of(cls.Weapon);
+            model = UnitFactory.Create(cls, side, transform);
             model.footDust = true;
             model.maxSpeed = moveSpeed;
         }
 
-        public void Rotate(Direction dir)
-        {
-            playerDirection = dir;
-            transform.rotation = Quaternion.Euler(0, (int)dir * 90f, 0);
-        }
-
+        // Turns to the nearest of the four grid directions.
         public void FaceTowards(Vector3 point)
         {
             var d = point - transform.position;
             d.y = 0;
             if (d.sqrMagnitude < 0.001f) return;
-            if (Mathf.Abs(d.x) > Mathf.Abs(d.z)) Rotate(d.x > 0 ? Direction.East : Direction.West);
-            else Rotate(d.z > 0 ? Direction.North : Direction.South);
+            d = Mathf.Abs(d.x) > Mathf.Abs(d.z) ? new Vector3(Mathf.Sign(d.x), 0, 0) : new Vector3(0, 0, Mathf.Sign(d.z));
+            transform.rotation = Quaternion.LookRotation(d);
         }
-
-        public Vector3 Forward => Quaternion.Euler(0, (int)playerDirection * 90f, 0) * Vector3.forward;
 
         // Walks the path tile by tile, turning to face each step (as the 2015 Move did).
         public IEnumerator MoveAlong(List<TileMapInfo> path)
@@ -84,13 +68,6 @@ namespace LLTacticalWar
         {
             isTurnOver = over;
             model.SetDimmed(over);
-        }
-
-        public void TakeBattleResult(int health, int units)
-        {
-            currentHealth = Mathf.Max(0, health);
-            currentUnits = Mathf.Max(0, units);
-            isAlive = currentHealth > 0;
         }
     }
 }

@@ -5,16 +5,18 @@ using UnityEngine;
 
 namespace LLTacticalWar
 {
-    // Ported from the 2015 TurnStateEnemyBot. It used to pick a random enemy and wander to a
-    // random tile, and that do/while could spin forever once no free tile was left. Now each enemy
-    // attacks if it can; otherwise it advances to the free tile that puts it in reach of the
-    // weakest player unit, or as close as it can get. There are short pauses so you can follow it.
+    // The enemy phase. Each enemy, nearest to the player first, scores every (tile, target) pair
+    // it can reach with Combat's odds: a likely kill first, then expected damage dealt minus
+    // expected damage taken. With nobody in reach it marches toward the nearest player unit by
+    // walking distance. Its attacks play the same battle scene as the player's, after a short
+    // look at the forecast. There are pauses so you can follow it.
     public class TurnStateEnemyBot : MonoBehaviour
     {
         TileMap tMap;
         TurnManager tMan;
         PointerScript pointer;
-        bool battleDone;
+
+        struct Plan { public TileMapInfo tile; public Player target; public float score; }
 
         void Start()
         {
@@ -23,14 +25,13 @@ namespace LLTacticalWar
             pointer = FindAnyObjectByType<PointerScript>();
         }
 
+        void PointAt(TileMapInfo t) => pointer.SetTile(t.x, t.z);
+
         public void InitializeAction()
         {
             tMan.onGoingTurn = true;
-            foreach (var e in tMan.enemies)
-            {
-                e.SetTurnOver(false);
-                e.moveEnabled = e.attackEnabled = e.waitEnabled = true;
-            }
+            foreach (var e in tMan.enemies) e.SetTurnOver(false);
+            tMan.RefreshDanger();
             GameUI.I.Banner("ENEMY TURN", "ROUND " + tMan.round, Palette.Crimson);
             GameUI.I.SetTurnInfo("ENEMY TURN  -  ROUND " + tMan.round, Palette.CrimsonLight);
             GameUI.I.SetHint("The enemy is moving...     ESC  pause");
@@ -43,74 +44,60 @@ namespace LLTacticalWar
         {
             yield return new WaitForSeconds(1.0f);
 
-            var order = tMan.enemies.OrderBy(e => NearestPlayerDistance(e)).ToList();
+            var order = tMan.enemies.OrderBy(NearestPlayerDistance).ToList();
             foreach (var enemy in order)
             {
                 if (enemy == null || !enemy.isAlive || tMan.turnState == TurnManager.TurnState.EndGame) continue;
                 if (tMan.players.Count == 0) break;
                 tMan.currentTurn = enemy;
-                pointer.SetTile(enemy.tilePosition % tMap.tileX, enemy.tilePosition / tMap.tileX);
+                PointAt(enemy.Tile);
                 GameUI.I.ShowUnitCard(enemy);
-                yield return new WaitForSeconds(0.45f);
+                yield return new WaitForSeconds(0.4f);
 
-                var target = BestTarget(enemy);
-                if (target == null && enemy.moveEnabled)
+                var start = enemy.Tile;
+                var reach = tMap.MoveRange(start, enemy.playerClass.TileMove);
+                var plan = BestAttack(enemy, reach);
+                var dest = plan.target != null ? plan.tile : Advance(reach);
+
+                if (dest != start)
                 {
-                    var start = tMap.tiles[enemy.tilePosition];
-                    var range = tMap.MoveRange(start, enemy.playerClass.TileMove);
-                    tMap.HighlightTiles(range, Palette.CrimsonLight, 0.35f);
-                    yield return new WaitForSeconds(0.45f);
-
-                    var dest = ChooseDestination(enemy, range);
-                    if (dest != null && dest != start)
-                    {
-                        var path = PathFinder.FindPath(start, dest, range);
-                        tMap.HighlightTiles(path, Palette.Gold, 0.5f);
-                        if (path.Count >= 2)
-                        {
-                            yield return enemy.MoveAlong(path);
-                            tMan.PlaceUnit(enemy, dest);
-                        }
-                    }
-                    enemy.moveEnabled = false;
-                    tMap.ClearHighlights();
-                    target = BestTarget(enemy);
-                }
-
-                if (target != null && enemy.attackEnabled)
-                {
-                    tMap.HighlightTiles(tMap.AttackRange(tMap.tiles[enemy.tilePosition], enemy.playerClass.TileAttack), Palette.CrimsonLight, 0.35f);
-                    tMap.HighlightTile(tMap.tiles[target.tilePosition], Palette.Crimson, 0.7f);
-                    pointer.SetTile(target.tilePosition % tMap.tileX, target.tilePosition / tMap.tileX);
-                    enemy.FaceTowards(target.transform.position);
-                    int bonus = TurnManager.FlankBonus(enemy, target, out var label);
-                    if (label != null)
-                    {
-                        GameUI.I.FloatText(target.transform.position + Vector3.up * 2.4f, label, Palette.CrimsonLight, 1.2f);
-                        AudioBank.I.Play(Sfx.Flank);
-                    }
-                    yield return new WaitForSeconds(0.7f);
-                    tMap.ClearHighlights();
-                    GameUI.I.HideUnitCard();
-
-                    battleDone = false;
-                    tMan.battlesFought++;
-                    WarSceneManager.instance.StartBattle(target, enemy, Team.Enemy, bonus, label, () => battleDone = true);
-                    while (!battleDone) yield return null;
-
-                    enemy.attackEnabled = false;
-                    bool enemyDead = !enemy.isAlive, targetDead = !target.isAlive;
-                    if (targetDead) tMan.RemoveUnit(target);
-                    if (enemyDead) tMan.RemoveUnit(enemy);
-                    if (tMan.CheckTacticResult()) yield break;
-                    if (enemyDead) continue;
+                    tMap.HighlightTiles(reach, Palette.Crimson, 0.38f);
                     yield return new WaitForSeconds(0.4f);
+                    var path = PathFinder.FindPath(start, dest, reach);
+                    tMap.HighlightTiles(path, Palette.Gold, 0.5f);
+                    if (path.Count >= 2)
+                    {
+                        yield return enemy.MoveAlong(path);
+                        tMan.PlaceUnit(enemy, dest);
+                    }
+                    tMap.ClearHighlights();
                 }
 
-                var nearest = NearestPlayer(enemy);
-                if (nearest != null) enemy.FaceTowards(nearest.transform.position);
+                if (plan.target != null)
+                {
+                    var target = plan.target;
+                    tMap.HighlightTiles(tMap.AttackRange(enemy.Tile, enemy.Weapon.MinRange, enemy.Weapon.MaxRange), Palette.Crimson, 0.38f);
+                    tMap.HighlightTile(target.Tile, Palette.Crimson, 0.75f);
+                    PointAt(target.Tile);
+                    enemy.FaceTowards(target.transform.position);
+                    GameUI.I.HideUnitCard();
+                    GameUI.I.ShowForecast(Combat.Predict(enemy, target));
+                    yield return new WaitForSeconds(1.1f);
+                    GameUI.I.HideForecast();
+                    tMap.ClearHighlights();
+
+                    yield return tMan.Engage(enemy, target);
+                    if (tMan.CheckTacticResult()) yield break;
+                    if (!enemy.isAlive) continue;
+                    yield return new WaitForSeconds(0.3f);
+                }
+                else
+                {
+                    var nearest = NearestPlayer(enemy);
+                    if (nearest != null) enemy.FaceTowards(nearest.transform.position);
+                }
                 enemy.SetTurnOver(true);
-                yield return new WaitForSeconds(0.25f);
+                yield return new WaitForSeconds(0.2f);
             }
 
             GameUI.I.HideUnitCard();
@@ -119,46 +106,43 @@ namespace LLTacticalWar
             tMan.NextTurn();
         }
 
-        // weakest player unit in reach (lowest HP + troops), so the bot finishes what it starts
-        Player BestTarget(Player enemy)
+        // Every (tile, target) pair in reach, scored on the exchange's odds. Ties go to the
+        // shorter move.
+        Plan BestAttack(Player enemy, List<TileMapInfo> reach)
         {
-            return tMan.TargetsInRange(enemy).OrderBy(p => p.currentHealth + p.currentUnits * 2).FirstOrDefault();
-        }
-
-        TileMapInfo ChooseDestination(Player enemy, List<TileMapInfo> range)
-        {
-            TileMapInfo best = null;
-            float bestScore = float.MaxValue;
-            int reach = enemy.playerClass.TileAttack;
-            foreach (var t in range)
-            {
-                float score = float.MaxValue;
-                foreach (var p in tMan.players)
+            var best = new Plan { score = float.MinValue };
+            foreach (var tile in reach)
+                foreach (var target in tMan.TargetsInRange(enemy, tile))
                 {
-                    if (p == null) continue;
-                    int d = t.Distance(tMap.tiles[p.tilePosition]);
-                    float s = d <= reach ? -1000f + p.currentHealth + p.currentUnits * 2 : d * 10f;
-                    // prefer flanking tiles a little
-                    if (d <= reach)
-                    {
-                        var dir = (t.position - p.transform.position).normalized;
-                        if (Vector3.Dot(p.Forward, dir) < -0.5f) s -= 60f;
-                    }
-                    score = Mathf.Min(score, s);
+                    var odds = Combat.Expect(Combat.Predict(enemy, target, tile.Distance(target.Tile)));
+                    float score = odds.kill * 1000f + odds.dealt - odds.taken - tile.Distance(enemy.Tile) * 0.01f;
+                    if (score > best.score) best = new Plan { tile = tile, target = target, score = score };
                 }
-                score += Random.value; // break ties
-                if (score < bestScore) { bestScore = score; best = t; }
-            }
             return best;
         }
 
-        Player NearestPlayer(Player e) =>
-            tMan.players.Where(p => p != null).OrderBy(p => tMap.tiles[p.tilePosition].Distance(tMap.tiles[e.tilePosition])).FirstOrDefault();
+        // The reachable tile with the shortest walk to any player unit (trees and rocks block;
+        // units don't, since they move).
+        TileMapInfo Advance(List<TileMapInfo> reach)
+        {
+            var field = new Dictionary<TileMapInfo, int>();
+            var q = new Queue<TileMapInfo>();
+            foreach (var p in tMan.players) { field[p.Tile] = 0; q.Enqueue(p.Tile); }
+            while (q.Count > 0)
+            {
+                var t = q.Dequeue();
+                foreach (var n in t.Neighbours)
+                    if (n != null && !n.blocked && !field.ContainsKey(n)) { field[n] = field[t] + 1; q.Enqueue(n); }
+            }
+            return reach.OrderBy(t => field.TryGetValue(t, out var d) ? d : 999).ThenBy(_ => Random.value).First();
+        }
+
+        Player NearestPlayer(Player e) => tMan.players.OrderBy(p => p.Tile.Distance(e.Tile)).FirstOrDefault();
 
         float NearestPlayerDistance(Player e)
         {
             var n = NearestPlayer(e);
-            return n == null ? 999f : tMap.tiles[n.tilePosition].Distance(tMap.tiles[e.tilePosition]);
+            return n == null ? 999f : n.Tile.Distance(e.Tile);
         }
     }
 }

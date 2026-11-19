@@ -10,20 +10,21 @@ using UnityEngine.UI;
 namespace LLTacticalWar
 {
     // Every screen, built in code on one uGUI canvas with TextMeshPro: title, tactics HUD,
-    // unit tags, menus, battle HUD, pause, ending, banners, floating text and the fade.
+    // unit tags, menus, pause, ending, banners, floating text and the fade. The combat
+    // forecast and the battle HUD live in GameUI.Combat.cs.
     // This replaces the 2015 OnGUI labels and buttons.
-    public class GameUI : MonoBehaviour
+    public partial class GameUI : MonoBehaviour
     {
         public static GameUI I;
 
         public Sprite RoundSprite { get; private set; }
         Sprite whiteSprite;
         TMP_FontAsset font;
-        Material outlineMat, titleMat;
+        Material outlineMat, titleMat, chipMat;
 
         Canvas canvas;
         RectTransform root;
-        CanvasGroup titleGroup, tacticGroup, warGroup, bannerGroup, pauseGroup, endGroup;
+        CanvasGroup titleGroup, tacticGroup, bannerGroup, pauseGroup, endGroup;
         Image fadeImage, flashImage;
 
         // title
@@ -31,18 +32,14 @@ namespace LLTacticalWar
         // tactics HUD
         TextMeshProUGUI turnText, armyText, hintText;
         RectTransform unitCard;
-        TextMeshProUGUI cardName, cardClass, cardStats, cardHp, cardTroops;
-        Image cardStripe, cardHpFill, cardTroopFill;
-        float cardHpTarget, cardTroopTarget;
+        TextMeshProUGUI cardName, cardClass, cardStats, cardHp, cardWeapon, cardChipText;
+        Image cardStripe, cardHpFill, cardChip;
+        float cardHpTarget;
         // banner
         TextMeshProUGUI bannerText, bannerSub;
         Coroutine bannerRoutine;
-        // war HUD
-        TextMeshProUGUI warTimer, warPName, warEName, warPTroops, warETroops, warSkill;
-        Image warPHp, warEHp, warSkillFill;
-        Soldier boundP, boundE;
         // menus
-        MenuView contextMenu, sideMenu, pauseMenu, endMenu;
+        MenuView contextMenu, pauseMenu, endMenu;
         readonly List<MenuView> menuStack = new List<MenuView>();
         Vector3 contextWorld;
         TextMeshProUGUI endTitle, endStats;
@@ -50,7 +47,7 @@ namespace LLTacticalWar
         // unit tags + floating text
         class Tag { public RectTransform rt; public Image fill; public TextMeshProUGUI label; public float shown; }
         readonly Dictionary<Player, Tag> tags = new Dictionary<Player, Tag>();
-        class Floater { public RectTransform rt; public TextMeshProUGUI text; public Vector3 world; public float t, life; public bool active; }
+        class Floater { public RectTransform rt; public TextMeshProUGUI text; public Vector3 world; public float t, life, rise, popFrom; public bool active; }
         readonly List<Floater> floaters = new List<Floater>();
         RectTransform tagLayer, floatLayer;
 
@@ -89,17 +86,16 @@ namespace LLTacticalWar
             tagLayer = Stretch(root, "Tags");
             floatLayer = Stretch(root, "Floaters");
             BuildTactic();
-            BuildWar();
+            BuildForecast();
+            BuildBattleHud();
             BuildBanner();
             BuildTitle();
             contextMenu = MenuView.Create(root, "ContextMenu", 300f);
-            sideMenu = MenuView.Create(root, "SideMenu", 440f);
             BuildPause();
             BuildEnd();
             BuildOverlays();
 
             SetTacticHud(false);
-            SetWarHud(false);
         }
 
         void MakeSprites()
@@ -130,6 +126,10 @@ namespace LLTacticalWar
             outlineMat.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.18f);
             outlineMat.SetColor(ShaderUtilities.ID_OutlineColor, Palette.Ink);
             outlineMat.SetFloat(ShaderUtilities.ID_FaceDilate, 0.12f);
+
+            // dark text on a light chip: no outline
+            chipMat = new Material(font.material) { name = "TMP_Chip" };
+            chipMat.SetFloat(ShaderUtilities.ID_FaceDilate, 0.15f);
 
             titleMat = new Material(outlineMat) { name = "TMP_Title" };
             titleMat.EnableKeyword(ShaderUtilities.Keyword_Underlay);
@@ -272,27 +272,33 @@ namespace LLTacticalWar
             armyText.richText = true;
             Fill(armyText.rectTransform);
 
-            var hint = Panel(tacticGroup.transform, "Hint", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 22), new Vector2(1100, 48), Palette.WithAlpha(Palette.Panel, 0.85f));
-            hintText = Text(hint.transform, "", 20, Palette.Parchment, TextAlignmentOptions.Center);
+            var hint = Panel(tacticGroup.transform, "Hint", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(100, 22), new Vector2(920, 48), Palette.WithAlpha(Palette.Panel, 0.85f));
+            hintText = Text(hint.transform, "", 19, Palette.Parchment, TextAlignmentOptions.Center);
             Fill(hintText.rectTransform);
 
-            var card = Panel(tacticGroup.transform, "UnitCard", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24, 24), new Vector2(440, 236), Palette.WithAlpha(Palette.Panel, 0.94f));
+            var card = Panel(tacticGroup.transform, "UnitCard", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24, 24), new Vector2(540, 236), Palette.WithAlpha(Palette.Panel, 0.94f));
             unitCard = card.rectTransform;
             cardStripe = Panel(card.transform, "Stripe", new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(10, 0), new Vector2(14, 212), Palette.Azure);
             cardName = Text(card.transform, "", 32, Palette.Parchment, TextAlignmentOptions.Left);
-            TopLeft(cardName.rectTransform, new Vector2(38, -12), new Vector2(390, 40));
+            TopLeft(cardName.rectTransform, new Vector2(38, -12), new Vector2(360, 40));
+            cardName.enableAutoSizing = true;
+            cardName.fontSizeMin = 20f;
+            cardName.fontSizeMax = 32f;
             cardClass = Text(card.transform, "", 16, Palette.Muted, TextAlignmentOptions.TopLeft);
-            TopLeft(cardClass.rectTransform, new Vector2(40, -52), new Vector2(380, 44));
+            TopLeft(cardClass.rectTransform, new Vector2(40, -52), new Vector2(480, 44));
             cardClass.textWrappingMode = TextWrappingModes.Normal;
             cardClass.characterSpacing = 1f;
             cardHp = Text(card.transform, "", 18, Palette.Parchment, TextAlignmentOptions.Left);
             TopLeft(cardHp.rectTransform, new Vector2(40, -104), new Vector2(390, 22));
-            Bar(card.transform, new Vector2(40, -128), new Vector2(380, 20), Palette.Gold, out cardHpFill);
-            cardTroops = Text(card.transform, "", 18, Palette.Parchment, TextAlignmentOptions.Left);
-            TopLeft(cardTroops.rectTransform, new Vector2(40, -154), new Vector2(390, 22));
-            Bar(card.transform, new Vector2(40, -178), new Vector2(380, 14), Palette.Azure, out cardTroopFill);
-            cardStats = Text(card.transform, "", 18, Palette.Parchment, TextAlignmentOptions.Left);
-            TopLeft(cardStats.rectTransform, new Vector2(40, -204), new Vector2(390, 22));
+            Bar(card.transform, new Vector2(40, -128), new Vector2(480, 20), Palette.Gold, out cardHpFill);
+            cardWeapon = Text(card.transform, "", 18, Palette.Parchment, TextAlignmentOptions.Left);
+            TopLeft(cardWeapon.rectTransform, new Vector2(40, -156), new Vector2(390, 22));
+            cardStats = Text(card.transform, "", 17, Palette.Parchment, TextAlignmentOptions.Left);
+            TopLeft(cardStats.rectTransform, new Vector2(40, -196), new Vector2(480, 22));
+            cardStats.characterSpacing = 1.5f;
+            cardChip = Panel(card.transform, "Chip", new Vector2(1, 1), new Vector2(1, 1), new Vector2(-14, -16), new Vector2(118, 30), Palette.Gold);
+            cardChipText = Text(cardChip.transform, "", 16, Palette.Ink, TextAlignmentOptions.Center, chipMat);
+            Fill(cardChipText.rectTransform);
             unitCard.gameObject.SetActive(false);
         }
 
@@ -321,14 +327,17 @@ namespace LLTacticalWar
             var c = p.playerClass;
             cardStripe.color = Palette.Team(p.team);
             cardName.text = p.DisplayName.ToUpper();
+            cardChip.gameObject.SetActive(p.broken || p.isTurnOver);
+            cardChip.color = p.broken ? Palette.Gold : Palette.Muted;
+            cardChipText.text = p.broken ? "BROKEN" : "DONE";
             cardName.color = Palette.TeamLight(p.team);
             cardClass.text = c.ClassType.ToUpper() + "  -  " + c.ClassDescription;
-            cardHp.text = "GENERAL HP  " + p.currentHealth + " / " + p.maxHealth;
-            cardTroops.text = "TROOPS  " + p.currentUnits + " / " + p.startUnits;
-            cardStats.text = "ATK " + p.modifiedAttack + "    DEF " + p.modifiedDefense + "    MOVE " + c.TileMove + "    RANGE " + c.TileAttack + (p.isTurnOver ? "    DONE" : "");
-            cardHpTarget = p.maxHealth > 0 ? (float)p.currentHealth / p.maxHealth : 0f;
-            cardTroopTarget = p.startUnits > 0 ? (float)p.currentUnits / p.startUnits : 0f;
-            cardTroopFill.color = Palette.Team(p.team);
+            var s = p.stats;
+            var w = p.Weapon;
+            cardHp.text = "HP  " + p.currentHealth + " / " + p.MaxHP;
+            cardWeapon.text = w.Name.ToUpper() + "    MT " + w.Might + "  HIT " + w.Hit + "  RNG " + w.RangeText;
+            cardStats.text = (w.Magic ? "MAG " + s.Mag : "STR " + s.Str) + "  SKL " + s.Skl + "  SPD " + s.Spd + "  LCK " + s.Lck + "  DEF " + s.Def + "  RES " + s.Res + "  MOV " + c.TileMove;
+            cardHpTarget = p.MaxHP > 0 ? (float)p.currentHealth / p.MaxHP : 0f;
         }
 
         public void HideUnitCard() { unitCard.gameObject.SetActive(false); }
@@ -336,12 +345,12 @@ namespace LLTacticalWar
         public void RegisterUnit(Player p)
         {
             if (tags.ContainsKey(p)) return;
-            var bg = Panel(tagLayer, "Tag_" + p.name, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0f), Vector2.zero, new Vector2(96, 34), Palette.WithAlpha(Palette.Panel, 0.85f));
+            var bg = Panel(tagLayer, "Tag_" + p.name, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0f), Vector2.zero, new Vector2(124, 34), Palette.WithAlpha(Palette.Panel, 0.85f));
             var label = Text(bg.transform, "", 15, Palette.TeamLight(p.team), TextAlignmentOptions.Center);
             var lrt = label.rectTransform;
             lrt.anchorMin = new Vector2(0, 0.45f); lrt.anchorMax = new Vector2(1, 1);
             lrt.offsetMin = lrt.offsetMax = Vector2.zero;
-            var barBg = Panel(bg.transform, "HpBg", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 5), new Vector2(84, 10), Palette.Ink);
+            var barBg = Panel(bg.transform, "HpBg", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 5), new Vector2(110, 10), Palette.Ink);
             var frt = Rect(barBg.transform, "Fill", Vector2.zero, new Vector2(0, 0.5f), Vector2.zero, Vector2.zero);
             frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one;
             frt.offsetMin = new Vector2(2, 2); frt.offsetMax = new Vector2(-2, -2);
@@ -352,59 +361,6 @@ namespace LLTacticalWar
             fill.color = Palette.Team(p.team);
             fill.raycastTarget = false;
             tags[p] = new Tag { rt = bg.rectTransform, fill = fill, label = label, shown = 1f };
-        }
-
-        // ---------------- war HUD ----------------
-
-        void BuildWar()
-        {
-            warGroup = Group("WarHUD");
-            var left = Panel(warGroup.transform, "PlayerGeneral", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24, -22), new Vector2(520, 112), Palette.WithAlpha(Palette.Panel, 0.92f));
-            warPName = Text(left.transform, "", 26, Palette.AzureLight, TextAlignmentOptions.Left);
-            TopLeft(warPName.rectTransform, new Vector2(20, -10), new Vector2(480, 32));
-            Bar(left.transform, new Vector2(20, -46), new Vector2(480, 24), Palette.Azure, out warPHp);
-            warPTroops = Text(left.transform, "", 18, Palette.Parchment, TextAlignmentOptions.Left);
-            TopLeft(warPTroops.rectTransform, new Vector2(20, -78), new Vector2(480, 24));
-
-            var right = Panel(warGroup.transform, "EnemyGeneral", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-24, -22), new Vector2(520, 112), Palette.WithAlpha(Palette.Panel, 0.92f));
-            warEName = Text(right.transform, "", 26, Palette.CrimsonLight, TextAlignmentOptions.Right);
-            TopLeft(warEName.rectTransform, new Vector2(20, -10), new Vector2(480, 32));
-            Bar(right.transform, new Vector2(20, -46), new Vector2(480, 24), Palette.Crimson, out warEHp);
-            warEHp.fillOrigin = (int)Image.OriginHorizontal.Right;
-            warETroops = Text(right.transform, "", 18, Palette.Parchment, TextAlignmentOptions.Right);
-            TopLeft(warETroops.rectTransform, new Vector2(20, -78), new Vector2(480, 24));
-
-            var timer = Panel(warGroup.transform, "Timer", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -22), new Vector2(150, 80), Palette.WithAlpha(Palette.Panel, 0.92f));
-            warTimer = Text(timer.transform, "60", 46, Palette.Gold, TextAlignmentOptions.Center);
-            Fill(warTimer.rectTransform);
-
-            var skill = Panel(warGroup.transform, "Skill", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24, 90), new Vector2(330, 74), Palette.WithAlpha(Palette.Panel, 0.92f));
-            warSkill = Text(skill.transform, "AURA THRUST", 20, Palette.Parchment, TextAlignmentOptions.Left);
-            TopLeft(warSkill.rectTransform, new Vector2(18, -8), new Vector2(300, 26));
-            Bar(skill.transform, new Vector2(18, -40), new Vector2(294, 20), Palette.Gold, out warSkillFill);
-        }
-
-        public void SetWarHud(bool on) { Show(warGroup, on); }
-
-        public void BindWar(Soldier p, Soldier e, string pName, string eName)
-        {
-            boundP = p; boundE = e;
-            warPName.text = pName.ToUpper() + " GENERAL";
-            warEName.text = eName.ToUpper() + " GENERAL";
-            warPHp.fillAmount = (float)p.currentHealth / Mathf.Max(1, p.maxHealth);
-            warEHp.fillAmount = (float)e.currentHealth / Mathf.Max(1, e.maxHealth);
-            UpdateWar(60f, 0, 0, 0f);
-        }
-
-        public void UpdateWar(float timeLeft, int pTroops, int eTroops, float skill01)
-        {
-            warTimer.text = Mathf.CeilToInt(timeLeft).ToString();
-            warTimer.color = timeLeft <= 10f ? Palette.CrimsonLight : Palette.Gold;
-            if (boundP != null) warPTroops.text = "HP " + Mathf.Max(0, boundP.currentHealth) + "    TROOPS " + pTroops + "    ATK " + boundP.modifiedAttack + "  DEF " + boundP.modifiedDefense;
-            if (boundE != null) warETroops.text = "TROOPS " + eTroops + "    HP " + Mathf.Max(0, boundE.currentHealth);
-            warSkillFill.fillAmount = skill01;
-            warSkill.text = skill01 >= 1f ? "AURA THRUST  READY" : "AURA THRUST";
-            warSkill.color = skill01 >= 1f ? Palette.Gold : Palette.Parchment;
         }
 
         // ---------------- menus ----------------
@@ -426,16 +382,6 @@ namespace LLTacticalWar
             var p = WorldToCanvas(contextWorld + Vector3.up * 1.5f, out _);
             contextMenu.panel.anchoredPosition = p + new Vector2(70f, 60f);
         }
-
-        public void ShowSideMenu(KeyMenu m, Func<int> marked)
-        {
-            sideMenu.panel.anchorMin = sideMenu.panel.anchorMax = new Vector2(0f, 0.5f);
-            sideMenu.panel.pivot = new Vector2(0f, 0.5f);
-            sideMenu.panel.anchoredPosition = new Vector2(40f, 0f);
-            sideMenu.Show(m, marked);
-        }
-
-        public void HideSideMenu() { sideMenu.Hide(); }
 
         void BuildPause()
         {
@@ -574,7 +520,9 @@ namespace LLTacticalWar
 
         // ---------------- floating text ----------------
 
-        public void FloatText(Vector3 world, string text, Color color, float scale = 1f)
+        // rise: world units it drifts up over its life. popFrom: the scale it pops in from
+        // (above 1 for a stamp that slams down, below 1 for a number that springs up).
+        public void FloatText(Vector3 world, string text, Color color, float scale = 1f, float rise = 1.2f, float popFrom = 0.5f)
         {
             Floater f = null;
             foreach (var x in floaters) if (!x.active) { f = x; break; }
@@ -595,6 +543,8 @@ namespace LLTacticalWar
             f.text.fontSize = 30f * scale;
             f.t = 0f;
             f.life = 1.1f;
+            f.rise = rise;
+            f.popFrom = popFrom;
             f.active = true;
             f.rt.gameObject.SetActive(true);
         }
@@ -611,12 +561,10 @@ namespace LLTacticalWar
             // card bars tween instead of snapping
             float k = 1f - Mathf.Exp(-Time.unscaledDeltaTime * 10f);
             cardHpFill.fillAmount = Mathf.Lerp(cardHpFill.fillAmount, cardHpTarget, k);
-            cardTroopFill.fillAmount = Mathf.Lerp(cardTroopFill.fillAmount, cardTroopTarget, k);
-            if (boundP != null) warPHp.fillAmount = Mathf.Lerp(warPHp.fillAmount, Mathf.Max(0, boundP.currentHealth) / (float)Mathf.Max(1, boundP.maxHealth), k);
-            if (boundE != null) warEHp.fillAmount = Mathf.Lerp(warEHp.fillAmount, Mathf.Max(0, boundE.currentHealth) / (float)Mathf.Max(1, boundE.maxHealth), k);
 
             UpdateTags(k);
             UpdateFloaters();
+            UpdateBattleHud(Time.unscaledDeltaTime);
 
             var tMan = TurnManager.instance;
             if (tMan != null && tacticGroup.gameObject.activeSelf)
@@ -633,10 +581,11 @@ namespace LLTacticalWar
                 var tag = kv.Value;
                 if (p == null) { deadTags.Add(p); Destroy(tag.rt.gameObject); continue; }
                 var pos = WorldToCanvas(p.transform.position + Vector3.up * 2.55f, out bool vis);
-                tag.rt.gameObject.SetActive(vis && p.gameObject.activeInHierarchy);
+                tag.rt.gameObject.SetActive(vis && p.isAlive && p.gameObject.activeInHierarchy);
                 tag.rt.anchoredPosition = pos;
-                tag.label.text = p.playerClass.ClassName.ToUpper() + "  x" + p.currentUnits;
-                tag.shown = Mathf.Lerp(tag.shown, p.maxHealth > 0 ? (float)p.currentHealth / p.maxHealth : 0f, k);
+                tag.label.text = (p.broken ? "BROKEN" : p.playerClass.ClassName.ToUpper()) + "  " + p.currentHealth;
+                tag.label.color = p.broken ? Palette.Gold : Palette.TeamLight(p.team);
+                tag.shown = Mathf.Lerp(tag.shown, p.MaxHP > 0 ? (float)p.currentHealth / p.MaxHP : 0f, k);
                 tag.fill.fillAmount = tag.shown;
                 tag.label.alpha = p.isTurnOver ? 0.55f : 1f;
             }
@@ -650,10 +599,10 @@ namespace LLTacticalWar
                 if (!f.active) continue;
                 f.t += Time.unscaledDeltaTime / f.life;
                 if (f.t >= 1f) { f.active = false; f.rt.gameObject.SetActive(false); continue; }
-                var pos = WorldToCanvas(f.world + Vector3.up * (f.t * 1.2f), out bool vis);
+                var pos = WorldToCanvas(f.world + Vector3.up * (Ease.OutCubic(f.t) * f.rise), out bool vis);
                 f.rt.anchoredPosition = pos;
                 f.text.alpha = f.t < 0.7f ? 1f : 1f - (f.t - 0.7f) / 0.3f;
-                float pop = f.t < 0.15f ? Mathf.LerpUnclamped(0.5f, 1f, Ease.OutBack(f.t / 0.15f)) : 1f;
+                float pop = f.t < 0.15f ? Mathf.LerpUnclamped(f.popFrom, 1f, Ease.OutBack(f.t / 0.15f)) : 1f;
                 f.rt.localScale = Vector3.one * pop;
                 f.rt.gameObject.SetActive(vis);
             }

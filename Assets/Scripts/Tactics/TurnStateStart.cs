@@ -22,14 +22,14 @@ namespace LLTacticalWar
 
             var pr = PlayerRoster();
             for (int i = 0; i < pr.Length; i++)
-                tMan.players.Add(Spawn(pr[i], Team.Player, tm.TileAt(Columns[i], 0), Player.Direction.North));
+                tMan.players.Add(Spawn(pr[i], Team.Player, tm.TileAt(Columns[i], 0), Vector3.forward));
 
             var er = EnemyRoster();
             for (int i = 0; i < er.Length; i++)
-                tMan.enemies.Add(Spawn(er[i], Team.Enemy, tm.TileAt(Columns[i], tm.tileZ - 1), Player.Direction.South));
+                tMan.enemies.Add(Spawn(er[i], Team.Enemy, tm.TileAt(Columns[i], tm.tileZ - 1), Vector3.back));
         }
 
-        Player Spawn(BaseClass cls, Team team, TileMapInfo tile, Player.Direction facing)
+        Player Spawn(BaseClass cls, Team team, TileMapInfo tile, Vector3 facing)
         {
             var go = new GameObject((team == Team.Player ? "P_" : "E_") + cls.ClassName);
             go.transform.SetParent(GameManager.I.TacticRoot, false);
@@ -37,7 +37,7 @@ namespace LLTacticalWar
             var p = go.AddComponent<Player>();
             p.tilePosition = -1;
             p.Init(cls, team);
-            p.Rotate(facing);
+            p.transform.rotation = Quaternion.LookRotation(facing);
             TurnManager.instance.PlaceUnit(p, tile);
             GameUI.I?.RegisterUnit(p);
             return p;

@@ -2,8 +2,9 @@
 
 A port of the 2015 Unity 4 project
 [cazsaragih/LL-tactical-war](https://github.com/cazsaragih/LL-tactical-war) to Unity 6
-(6000.6.9f1, URP). Its design is unchanged: a turn-based grid tactics map where every attack
-cuts to a real-time battle between two generals and their troops.
+(6000.6.9f1, URP). It is a turn-based grid tactics map. The 2015 real-time battle between two
+generals and their troops is replaced by genre-standard 1v1 combat: every attack cuts to a short
+battle scene between the two units.
 
 The 2015 repo held only `Scripts/`. Its scenes, prefabs, models, animators and NavMesh were
 never committed, so everything you see is now built in code from basic shapes. The scene is
@@ -14,18 +15,24 @@ never committed, so everything you see is now built in code from basic shapes. T
 | Where | Keys |
 |---|---|
 | Menus | Up/Down to choose · **Z** or **Enter** to confirm · **X** or **Backspace** to go back · Left/Right to change sliders |
-| Tactics map | Arrows or WASD move the cursor · **Z** selects a unit, then Move / Attack / Wait · after Wait, the arrows pick a facing · **X** undoes a move · **Esc** pauses |
-| Battle | **WASD** moves your general · **left click** or **J** attacks · **right click** or **K** casts Aura Thrust · **Space** opens the command menu (Advance / Cover Me / Fall Back) |
+| Tactics map | Arrows or WASD move the cursor · **Z** selects a unit, **Z** again on a blue tile moves it, then Attack / Wait · arrows cycle targets · **X** steps back (and undoes a move) · **Shift** or **C** toggles the danger zone · **Esc** pauses |
+| Battle scene | Hold **Z** for double speed · **X** skips to the result |
 
-## Rules carried over from 2015
+## Rules
 
-- Six classes: Apprentice, Archer, Brawler, Dragoon, Fighter, Thief. Each keeps its 2015 troop
-  count, attack range and per-terrain movement.
-- Each unit is a general boosted by +150 HP and +10 ATK, leading troops at the class's base stats.
-- Attacking from behind gives +10 ATK and from the side +5, for that one battle.
-- Formations: Line (balanced), Wedge (ATK +10, DEF −10), Phalanx (ATK −10, DEF +10).
-- A battle ends when either general falls or after 60 seconds. Surviving HP and troops carry
-  back to the map, and a unit whose general falls is removed.
+- Six classes from 2015: Apprentice, Archer, Brawler, Dragoon, Fighter, Thief. Each keeps its
+  weapon and per-terrain movement. Stats (HP, Str, Mag, Skl, Spd, Lck, Def, Res) live in each
+  class; weapon numbers and ranges live in one table (`Units/Weapons.cs`).
+- Range comes from the weapon: swords, lances, clubs and daggers 1, bows 2 (not 1), Fire 1-2.
+- Damage is Str (Mag for Fire) plus Might, minus the foe's Def (Res for Fire).
+- Hit is weapon Hit + Skl x2 + Lck/2, minus the foe's avoid (Spd x2 + Lck), rolled with two
+  averaged random numbers. Crit is weapon Crit + Skl/2, minus the foe's Lck, for triple damage.
+- A side with 5 more Spd than its foe strikes twice.
+- Order: attacker, the defender's counter (if its weapon reaches and it isn't broken), then the
+  faster side's follow-up.
+- Triangle: sword beats club, club beats lance, lance beats sword. A landed hit with the
+  advantage **breaks** the target: it can't counter until its own side's next phase.
+- A unit at 0 HP leaves the board. The game ends when one side has no units.
 
 ## Where things live
 
@@ -33,11 +40,11 @@ never committed, so everything you see is now built in code from basic shapes. T
 Assets/Scripts/
   Core/     GameManager (shell + boot), Palette (art bible), AudioBank (synthesized audio),
             Fx (pooled particles), Ease, GameInput, Prim
-  Units/    BaseClass + the six classes, UnitFactory (primitive figures), UnitModel (motion)
+  Units/    BaseClass + the six classes, Stats, Weapons (the weapon table and the triangle),
+            UnitFactory (primitive figures), UnitModel (motion)
   Tactics/  TileMap, TileMapInfo, PathFinder (A*), PointerScript, TurnManager,
-            TurnStateStart / TurnStatePlayerTurn / TurnStateEnemyBot, Player, Scenery
-  War/      WarSceneManager, Soldier, TroopAI, PlayerController, BaseWeapon (+ subclasses),
-            BaseSkill / BaseSkill_AuraThrust / AuraThrust_Projectile, ArrowTracer
-  UI/       GameUI, MenuView, KeyMenu, HoverSelect
+            TurnStateStart / TurnStatePlayerTurn / TurnStateEnemyBot, Player, Scenery,
+            Combat (pure forecast / resolve / apply), BattleScene (the 1v1 scene)
+  UI/       GameUI (+ GameUI.Combat: forecast and battle HUD), MenuView, KeyMenu, HoverSelect
   Editor/   ProjectSetup (menu: LL Tactical War > Run Setup)
 ```

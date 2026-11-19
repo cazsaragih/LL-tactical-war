@@ -3,8 +3,8 @@ using UnityEngine;
 
 namespace LLTacticalWar
 {
-    // Ported from the 2015 TileMap: a generated grid mesh, tile neighbour links, and a
-    // point-filtered texture that highlights tiles. Ranges are now flood fills that respect the
+    // Ported from the 2015 TileMap: a generated grid mesh, tile neighbour links, and
+    // point-filtered textures that highlight tiles. Ranges are now flood fills that respect the
     // map edges and occupied tiles; the old diamond walk crashed near an edge.
     public class TileMap : MonoBehaviour
     {
@@ -18,8 +18,8 @@ namespace LLTacticalWar
         public readonly List<TileMapInfo> tiles = new List<TileMapInfo>();
         public readonly List<TileMapInfo> inRangeTiles = new List<TileMapInfo>();
 
-        Texture2D overlay;
-        static readonly Color Clear = new Color(0, 0, 0, 0);
+        // Two overlay layers: the danger zone underneath, the per-state highlights on top.
+        OverlayLayer highlights, danger;
 
         // Obstacle layout, top row is z = tileZ-1. T = trees, R = rocks.
         static readonly string[] Layout =
@@ -118,53 +118,32 @@ namespace LLTacticalWar
 
         void BuildOverlay()
         {
-            overlay = new Texture2D(tileX, tileZ, TextureFormat.RGBA32, false)
-            {
-                filterMode = FilterMode.Point,
-                wrapMode = TextureWrapMode.Clamp
-            };
-            ClearHighlights();
-
-            var mesh = new Mesh { name = "Overlay" };
-            float w = tileX * tileSize, h = tileZ * tileSize;
-            mesh.vertices = new[] { new Vector3(0, 0, 0), new Vector3(0, 0, h), new Vector3(w, 0, h), new Vector3(w, 0, 0) };
-            mesh.uv = new[] { new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0) };
-            mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
-            mesh.RecalculateNormals();
-            var go = new GameObject("Highlights");
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = new Vector3(0, 0.05f, 0);
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var r = go.AddComponent<MeshRenderer>();
-            var mat = Palette.Overlay();
-            mat.mainTexture = overlay;
-            r.sharedMaterial = mat;
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            r.receiveShadows = false;
+            danger = new OverlayLayer(this, "DangerZone", 0.04f, 3000);
+            highlights = new OverlayLayer(this, "Highlights", 0.05f, 3001);
         }
 
         // ---------------- highlights ----------------
 
-        public void ClearHighlights()
-        {
-            for (int z = 0; z < tileZ; z++)
-                for (int x = 0; x < tileX; x++)
-                    overlay.SetPixel(x, z, Clear);
-            overlay.Apply();
-        }
+        public void ClearHighlights() { highlights.Clear(); highlights.Push(); }
 
         public void HighlightTiles(IEnumerable<TileMapInfo> list, Color color, float alpha = 0.5f)
         {
-            color.a = alpha;
-            foreach (var t in list) overlay.SetPixel(t.x, t.z, color);
-            overlay.Apply();
+            foreach (var t in list) highlights.Paint(t, color, alpha, false);
+            highlights.Push();
         }
 
         public void HighlightTile(TileMapInfo t, Color color, float alpha = 0.6f)
         {
-            color.a = alpha;
-            overlay.SetPixel(t.x, t.z, color);
-            overlay.Apply();
+            highlights.Paint(t, color, alpha, false);
+            highlights.Push();
+        }
+
+        // The danger zone: striped so it reads apart from a unit's own attack range.
+        public void ShowDanger(IEnumerable<TileMapInfo> list)
+        {
+            danger.Clear();
+            if (list != null) foreach (var t in list) danger.Paint(t, Palette.Crimson, 0.34f, true);
+            danger.Push();
         }
 
         // ---------------- ranges ----------------
@@ -192,14 +171,14 @@ namespace LLTacticalWar
             return result;
         }
 
-        // Manhattan diamond of attack reach, edge-safe, excluding the attacker's tile.
-        public List<TileMapInfo> AttackRange(TileMapInfo start, int range)
+        // Manhattan ring of attack reach between min and max range, edge-safe.
+        public List<TileMapInfo> AttackRange(TileMapInfo start, int minRange, int maxRange)
         {
             var result = new List<TileMapInfo>();
             foreach (var t in tiles)
             {
                 int d = t.Distance(start);
-                if (d >= 1 && d <= range) result.Add(t);
+                if (d >= minRange && d <= maxRange) result.Add(t);
             }
             return result;
         }
@@ -230,5 +209,63 @@ namespace LLTacticalWar
             int z = Mathf.Clamp(Mathf.FloorToInt(location.z / tileSize), 0, tileZ - 1);
             return x + tileX * z;
         }
+    }
+
+    // One transparent quad over the board, PerTile texels per tile, so a highlighted tile gets
+    // a fill and a brighter one-texel rim.
+    public sealed class OverlayLayer
+    {
+        const int PerTile = 12;
+        readonly Texture2D tex;
+        readonly Color32[] px;
+        readonly int width;
+
+        public OverlayLayer(TileMap map, string name, float height, int renderQueue)
+        {
+            width = map.tileX * PerTile;
+            tex = new Texture2D(width, map.tileZ * PerTile, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            px = new Color32[width * map.tileZ * PerTile];
+            Push();
+
+            var mesh = new Mesh { name = name };
+            float w = map.tileX * map.tileSize, h = map.tileZ * map.tileSize;
+            mesh.vertices = new[] { new Vector3(0, 0, 0), new Vector3(0, 0, h), new Vector3(w, 0, h), new Vector3(w, 0, 0) };
+            mesh.uv = new[] { new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0) };
+            mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
+            mesh.RecalculateNormals();
+            var go = new GameObject(name);
+            go.transform.SetParent(map.transform, false);
+            go.transform.localPosition = new Vector3(0, height, 0);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var r = go.AddComponent<MeshRenderer>();
+            var mat = Palette.Overlay();
+            mat.mainTexture = tex;
+            mat.renderQueue = renderQueue;   // same quad size, so sort by queue, not distance
+            r.sharedMaterial = mat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+        }
+
+        public void Clear() => System.Array.Clear(px, 0, px.Length);
+
+        public void Paint(TileMapInfo t, Color color, float alpha, bool striped)
+        {
+            Color32 fill = Palette.WithAlpha(color, alpha);
+            Color32 faint = Palette.WithAlpha(color, alpha * 0.35f);
+            Color32 rim = Palette.WithAlpha(Color.Lerp(color, Palette.Parchment, 0.3f), Mathf.Min(1f, alpha * 1.9f));
+            for (int y = 0; y < PerTile; y++)
+                for (int x = 0; x < PerTile; x++)
+                {
+                    bool edge = x == 0 || y == 0 || x == PerTile - 1 || y == PerTile - 1;
+                    bool gap = striped && (x + y) % 6 >= 3;
+                    px[(t.z * PerTile + y) * width + t.x * PerTile + x] = edge ? rim : gap ? faint : fill;
+                }
+        }
+
+        public void Push() { tex.SetPixels32(px); tex.Apply(); }
     }
 }

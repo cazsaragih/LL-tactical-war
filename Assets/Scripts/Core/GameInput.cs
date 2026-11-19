@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -8,7 +9,6 @@ namespace LLTacticalWar
     public static class GameInput
     {
         static Keyboard Kb => Keyboard.current;
-        static Mouse Ms => Mouse.current;
 
         static bool Pressed(params Key[] keys)
         {
@@ -30,27 +30,32 @@ namespace LLTacticalWar
         public static bool Cancel  => Pressed(Key.X, Key.Backspace) || Debug("cancel");
         public static bool Pause   => Pressed(Key.Escape) || Debug("pause");
         public static bool AnyStart => Pressed(Key.Enter, Key.NumpadEnter, Key.Z, Key.Space) || Debug("confirm");
+        public static bool Danger  => Pressed(Key.LeftShift, Key.RightShift, Key.C) || Debug("danger");
+
+        // Held Z plays the battle scene at double speed.
+        public static bool ConfirmHeld => Held(Key.Z, Key.Enter, Key.NumpadEnter) || DebugHeld("confirm");
 
         public static bool UpPressed    => Pressed(Key.UpArrow, Key.W) || Debug("up");
         public static bool DownPressed  => Pressed(Key.DownArrow, Key.S) || Debug("down");
         public static bool LeftPressed  => Pressed(Key.LeftArrow, Key.A) || Debug("left");
         public static bool RightPressed => Pressed(Key.RightArrow, Key.D) || Debug("right");
 
-        public static bool UpHeld    => Held(Key.UpArrow, Key.W) || debugMove.y > 0.5f && Time.time < debugMoveUntil;
-        public static bool DownHeld  => Held(Key.DownArrow, Key.S) || debugMove.y < -0.5f && Time.time < debugMoveUntil;
-        public static bool LeftHeld  => Held(Key.LeftArrow, Key.A) || debugMove.x < -0.5f && Time.time < debugMoveUntil;
-        public static bool RightHeld => Held(Key.RightArrow, Key.D) || debugMove.x > 0.5f && Time.time < debugMoveUntil;
+        public static bool UpHeld    => Held(Key.UpArrow, Key.W) || DebugHeld("up");
+        public static bool DownHeld  => Held(Key.DownArrow, Key.S) || DebugHeld("down");
+        public static bool LeftHeld  => Held(Key.LeftArrow, Key.A) || DebugHeld("left");
+        public static bool RightHeld => Held(Key.RightArrow, Key.D) || DebugHeld("right");
 
         // ---- verification hooks: lets an automated play-test press buttons without real keys ----
-        static readonly System.Collections.Generic.HashSet<string> debugPending = new System.Collections.Generic.HashSet<string>();
+        static readonly HashSet<string> debugPending = new HashSet<string>();
+        static readonly Dictionary<string, float> debugHeldUntil = new Dictionary<string, float>();
         static int debugFrame = -1;
-        static Vector2 debugMove;
-        static float debugMoveUntil;
 
         // A press is live for exactly the next full frame after it is queued, whatever point in
         // the player loop queued it.
         public static void DebugPress(string action) { debugPending.Add(action); debugFrame = Time.frameCount + 1; }
-        public static void DebugHold(Vector2 move, float seconds) { debugMove = move; debugMoveUntil = Time.time + seconds; }
+
+        // A hold lasts `seconds` of real time, whatever the time scale.
+        public static void DebugHold(string action, float seconds) { debugHeldUntil[action] = Time.unscaledTime + seconds; }
 
         static bool Debug(string action)
         {
@@ -61,24 +66,7 @@ namespace LLTacticalWar
             return debugPending.Contains(action);
         }
 
-        // Battle controls
-        public static Vector2 Move
-        {
-            get
-            {
-                var v = Vector2.zero;
-                if (LeftHeld) v.x -= 1f;
-                if (RightHeld) v.x += 1f;
-                if (UpHeld) v.y += 1f;
-                if (DownHeld) v.y -= 1f;
-                return v.sqrMagnitude > 1f ? v.normalized : v;
-            }
-        }
-
-        public static bool Attack  => Pressed(Key.J) || (Ms != null && Ms.leftButton.wasPressedThisFrame) || Debug("attack");
-        public static bool AttackHeld => Held(Key.J) || (Ms != null && Ms.leftButton.isPressed);
-        public static bool Skill   => Pressed(Key.K) || (Ms != null && Ms.rightButton.wasPressedThisFrame) || Debug("skill");
-        public static bool Command => Pressed(Key.Space) || Debug("command");
+        static bool DebugHeld(string action) => debugHeldUntil.TryGetValue(action, out var until) && Time.unscaledTime < until;
 
         // Debug hook so a verification drive can move the cursor without simulated key events.
         public static Vector2Int debugCursorNudge;

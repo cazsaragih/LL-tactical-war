@@ -6,15 +6,15 @@ namespace LLTacticalWar
     // Builds every figure from palette-tinted primitives. Each class has a silhouette you can
     // read filled black: the Dragoon rides a horse, the Apprentice wears a tall hat, the Brawler
     // is a broad beastman with ears, the Archer is hooded with a bow, the Thief is masked with
-    // twin daggers, the Fighter carries sword and shield. Generals add a banner on the back.
+    // twin daggers, the Fighter carries sword and shield. Every unit wears a banner on the back.
     public static class UnitFactory
     {
         static readonly Dictionary<string, GameObject> templates = new Dictionary<string, GameObject>();
         static Transform templateRoot;
 
-        public static UnitModel Create(BaseClass cls, Team team, bool general, Transform parent)
+        public static UnitModel Create(BaseClass cls, Team team, Transform parent)
         {
-            string key = cls.ClassName + "_" + team + "_" + general;
+            string key = cls.ClassName + "_" + team;
             if (!templates.TryGetValue(key, out var tpl) || tpl == null)
             {
                 if (templateRoot == null)
@@ -23,7 +23,7 @@ namespace LLTacticalWar
                     templateRoot.gameObject.SetActive(false);
                     Object.DontDestroyOnLoad(templateRoot.gameObject);
                 }
-                tpl = Build(cls, team, general);
+                tpl = Build(cls, team);
                 tpl.transform.SetParent(templateRoot, false);
                 templates[key] = tpl;
             }
@@ -44,7 +44,7 @@ namespace LLTacticalWar
             templateRoot = null;
         }
 
-        static GameObject Build(BaseClass cls, Team team, bool general)
+        static GameObject Build(BaseClass cls, Team team)
         {
             var root = new GameObject("Model_" + cls.ClassName);
             var m = root.AddComponent<UnitModel>();
@@ -105,10 +105,8 @@ namespace LLTacticalWar
             BuildWeapon(cls.Weapon, m.weaponHold, tc, td);
             BuildOffHand(cls.ClassName, m.armL, m.body, tc, td);
 
-            if (general) BuildBanner(m, tc);
-
-            float scale = general ? 1.15f : 1f;
-            root.transform.localScale = Vector3.one * scale;
+            BuildBanner(m, tc);
+            root.transform.localScale = Vector3.one * 1.15f;
             m.maxSpeed = 6f;
             return root;
         }

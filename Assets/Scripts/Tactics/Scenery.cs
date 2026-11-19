@@ -107,41 +107,30 @@ namespace LLTacticalWar
             Prim.Part("Fire", PrimitiveType.Sphere, c, new Vector3(0, 0.15f, 2.2f), new Vector3(0.5f, 0.3f, 0.5f), Palette.StoneDark);
         }
 
-        // ---------------- battlefield ----------------
+        // ---------------- battle stage ----------------
 
-        public static GameObject BuildBattlefield(Transform parent, float sizeX, float sizeZ)
+        // The 1v1 stage: one board square lifted off the war table, split into the two fighters'
+        // halves, in a meadow ringed by trees. The camera looks from -z, so dressing sits behind.
+        public static void BuildStage(Transform parent)
         {
-            var ground = Prim.Part("Ground", PrimitiveType.Cube, parent, new Vector3(0, -0.5f, 0), new Vector3(sizeX, 1f, sizeZ), Palette.Dirt);
-            ground.AddComponent<BoxCollider>();
-            Prim.Part("Outskirts", PrimitiveType.Cube, parent, new Vector3(0, -0.62f, 0), new Vector3(sizeX + 120f, 1f, sizeZ + 120f), Palette.Pine);
+            Prim.Part("StageBase", PrimitiveType.Cube, parent, new Vector3(0, -0.42f, 0), new Vector3(11.2f, 0.7f, 5.4f), Palette.Walnut);
+            Prim.Part("StageTrim", PrimitiveType.Cube, parent, new Vector3(0, -0.06f, 0), new Vector3(10.7f, 0.06f, 4.9f), Palette.Gold);
+            Prim.Part("HalfL", PrimitiveType.Cube, parent, new Vector3(-2.6f, -0.04f, 0), new Vector3(5.1f, 0.1f, 4.6f), Palette.Meadow);
+            Prim.Part("HalfR", PrimitiveType.Cube, parent, new Vector3(2.6f, -0.04f, 0), new Vector3(5.1f, 0.1f, 4.6f), Palette.MeadowAlt);
+            Prim.Part("Field", PrimitiveType.Cube, parent, new Vector3(0, -1.3f, 6f), new Vector3(180f, 0.2f, 120f), Palette.Pine);
 
-            var rng = new System.Random(11);
-            // worn dirt patches so the field has texture without a texture
-            for (int i = 0; i < 40; i++)
+            var rng = new System.Random(23);
+            for (int i = 0; i < 34; i++)
             {
-                var p = new Vector3(((float)rng.NextDouble() - 0.5f) * sizeX * 0.95f, 0.005f, ((float)rng.NextDouble() - 0.5f) * sizeZ * 0.95f);
-                float s = 1.5f + (float)rng.NextDouble() * 4f;
-                Prim.Part("Patch", PrimitiveType.Cylinder, parent, p, new Vector3(s, 0.005f, s * 0.7f), Palette.DirtDark, new Vector3(0, (float)rng.NextDouble() * 180f, 0), false);
+                float x = -22f + i * (44f / 33f) + ((float)rng.NextDouble() - 0.5f) * 1.6f;
+                float z = 10f + (float)rng.NextDouble() * 10f;
+                Tree(parent, new Vector3(x * 1.3f, -1.2f, z), 2.4f + (float)rng.NextDouble() * 1.4f, rng);
             }
-            // tree lines along the long edges, rocks in the corners
-            for (int i = 0; i < 40; i++)
-            {
-                float x = -sizeX / 2f + i * (sizeX / 39f) + ((float)rng.NextDouble() - 0.5f) * 1.5f;
-                Tree(parent, new Vector3(x, 0, sizeZ / 2f + 2f + (float)rng.NextDouble() * 3f), 1.6f + (float)rng.NextDouble() * 0.8f, rng);
-                Tree(parent, new Vector3(x, 0, -sizeZ / 2f - 4f - (float)rng.NextDouble() * 3f), 1.4f + (float)rng.NextDouble() * 0.6f, rng);
-            }
-            for (int i = 0; i < 10; i++)
-            {
-                float side = i % 2 == 0 ? -1f : 1f;
-                var p = new Vector3(side * (sizeX / 2f + 2f + (float)rng.NextDouble() * 3f), 0.3f, ((float)rng.NextDouble() - 0.5f) * sizeZ);
-                Prim.Part("Boulder", PrimitiveType.Sphere, parent, p, new Vector3(2.4f, 1.6f, 2f), Palette.Stone, new Vector3(0, (float)rng.NextDouble() * 180f, 0));
-            }
-            // camp flags behind each army
-            Prim.Part("FlagA", PrimitiveType.Cube, parent, new Vector3(-sizeX / 2f - 1f, 2.6f, 0), new Vector3(0.05f, 1f, 1.6f), Palette.Azure);
-            Prim.Part("PoleA", PrimitiveType.Cylinder, parent, new Vector3(-sizeX / 2f - 1f, 1.6f, 0.85f), new Vector3(0.1f, 1.6f, 0.1f), Palette.Wood);
-            Prim.Part("FlagB", PrimitiveType.Cube, parent, new Vector3(sizeX / 2f + 1f, 2.6f, 0), new Vector3(0.05f, 1f, 1.6f), Palette.Crimson);
-            Prim.Part("PoleB", PrimitiveType.Cylinder, parent, new Vector3(sizeX / 2f + 1f, 1.6f, 0.85f), new Vector3(0.1f, 1.6f, 0.1f), Palette.Wood);
-            return ground;
+            foreach (float side in new[] { -1f, 1f })
+                for (int i = 0; i < 6; i++)
+                    Tree(parent, new Vector3(side * (9f + (float)rng.NextDouble() * 6f), -1.2f, -2f + i * 1.8f), 1.8f + (float)rng.NextDouble(), rng);
+            Prim.Part("Rock", PrimitiveType.Sphere, parent, new Vector3(-7.5f, -0.9f, 3.5f), new Vector3(2.2f, 1.4f, 1.8f), Palette.Stone, new Vector3(0, 30f, 0));
+            Prim.Part("Rock", PrimitiveType.Sphere, parent, new Vector3(8.2f, -0.95f, 4.5f), new Vector3(1.6f, 1f, 1.4f), Palette.StoneDark, new Vector3(0, 70f, 0));
         }
     }
 }

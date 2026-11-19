@@ -5,54 +5,71 @@ using UnityEngine;
 
 namespace LLTacticalWar
 {
-    // Ported from the 2015 TurnStatePlayerTurn. Same state machine and the same flow:
-    // pick a unit -> Move / Attack / Wait menu -> choose a facing -> next unit. X backs out at
-    // each step, and after moving, X in the menu undoes the move.
+    // The player's turn as one state machine:
+    //   Pick -> Move -> (Walking) -> Menu -> Target -> Battle -> next unit
+    // X steps back one state: Move -> Pick, Menu -> Move (undoing the walk), Target -> Menu.
+    // A state ignores input on the frame it was entered, so one press never moves two states.
     public class TurnStatePlayerTurn : MonoBehaviour
     {
-        enum PlayerState { None, Pick, Menu, Move, Attack, InBattle, Facing, Animation, End }
-        PlayerState playerState = PlayerState.None;
+        public enum PlayerState { None, Pick, Move, Walking, Menu, Target, Battle }
+        public PlayerState State { get; private set; } = PlayerState.None;
+        int enteredFrame;
 
         TileMap tMap;
         TurnManager tMan;
         PointerScript pointer;
 
-        Player unit;
-        Player pickedEnemy;
-        Vector3 previousPosition;
-        Player.Direction previousDirection;
-        int previousTile;
-
-        List<TileMapInfo> moveTiles, attackTiles;
+        Player unit;                 // the unit taking orders
+        TileMapInfo origin;          // where it stood before this order, for the undo
+        Quaternion originRotation;
+        List<TileMapInfo> moveTiles, fringeTiles;
+        List<Player> targets = new List<Player>();
+        int targetIndex;
         int lastPointerIndex = -1;
         Player lastHover;
-        KeyMenu menu;
-        Transform facingMarker;
+
+        public Player Unit => unit;
+        public Player CurrentTarget => State == PlayerState.Target ? targets[targetIndex] : null;
 
         void Start()
         {
             tMap = TileMap.instance;
             tMan = TurnManager.instance;
             pointer = FindAnyObjectByType<PointerScript>();
-            facingMarker = new GameObject("FacingMarker").transform;
-            facingMarker.SetParent(GameManager.I.TacticRoot, false);
-            for (int i = 0; i < 3; i++)
-                Prim.GlowPart("Chevron", PrimitiveType.Cube, facingMarker, new Vector3(0, 0.15f, 0.9f + i * 0.35f), new Vector3(0.5f - i * 0.12f, 0.06f, 0.12f), Palette.Gold);
-            facingMarker.gameObject.SetActive(false);
         }
+
+        void Go(PlayerState s) { State = s; enteredFrame = Time.frameCount; }
+
+        void PointAt(TileMapInfo t) => pointer.SetTile(t.x, t.z);
+
+        void Update()
+        {
+            if (!GameManager.IsPlaying || GameManager.I.InBattle || Time.frameCount == enteredFrame) return;
+            if (GameInput.Danger && State != PlayerState.None && State != PlayerState.Walking && State != PlayerState.Battle)
+            {
+                tMan.dangerOn = !tMan.dangerOn;
+                tMan.RefreshDanger();
+                AudioBank.I.Play(tMan.dangerOn ? Sfx.UiConfirm : Sfx.UiCancel, 0.6f);
+            }
+            switch (State)
+            {
+                case PlayerState.Pick: Pick(); break;
+                case PlayerState.Move: Move(); break;
+                case PlayerState.Target: Target(); break;
+            }
+        }
+
+        // ---------------- pick ----------------
 
         public void EnterPickState()
         {
             tMan.onGoingTurn = true;
-            foreach (var p in tMan.players)
-            {
-                p.SetTurnOver(false);
-                p.moveEnabled = p.attackEnabled = p.waitEnabled = true;
-            }
+            foreach (var p in tMan.players) p.SetTurnOver(false);
             GameUI.I.Banner("YOUR TURN", "ROUND " + tMan.round, Palette.Azure);
+            GameUI.I.SetTurnInfo("YOUR TURN  -  ROUND " + tMan.round, Palette.AzureLight);
             AudioBank.I.Play(Sfx.Turn);
             var first = tMan.players.FirstOrDefault();
-            if (first != null) pointer.SetTile(first.tilePosition % tMap.tileX, first.tilePosition / tMap.tileX);
+            if (first != null) PointAt(first.Tile);
             EnterPick();
         }
 
@@ -63,31 +80,17 @@ namespace LLTacticalWar
             lastPointerIndex = -1;
             tMap.ClearHighlights();
             GameUI.I.HideContextMenu();
+            GameUI.I.HideForecast();
             pointer.inputEnabled = true;
-            GameUI.I.SetHint("ARROWS  move cursor     Z  select unit     ESC  pause");
-            GameUI.I.SetTurnInfo("YOUR TURN  -  ROUND " + tMan.round, Palette.AzureLight);
-            playerState = PlayerState.Pick;
+            tMan.RefreshDanger();
+            GameUI.I.SetHint("ARROWS  move cursor     Z  select unit     SHIFT  danger zone     ESC  pause");
+            Go(PlayerState.Pick);
         }
 
-        void Update()
-        {
-            if (!GameManager.IsPlaying || GameManager.I.InBattle) return;
-            switch (playerState)
-            {
-                case PlayerState.Pick: PickPlayer(); break;
-                case PlayerState.Move: Move(); break;
-                case PlayerState.Attack: Attack(); break;
-                case PlayerState.Facing: ChooseDirection(); break;
-                case PlayerState.End: EndTurn(); break;
-            }
-        }
-
-        // ---------------- pick ----------------
-
-        void PickPlayer()
+        void Pick()
         {
             var tile = pointer.Tile;
-            var hover = tile?.occupant;
+            var hover = tile.occupant;
             if (hover != lastHover || tile.index != lastPointerIndex)
             {
                 lastHover = hover;
@@ -96,50 +99,31 @@ namespace LLTacticalWar
                 if (hover != null)
                 {
                     GameUI.I.ShowUnitCard(hover);
-                    var range = tMap.MoveRange(tMap.tiles[hover.tilePosition], hover.playerClass.TileMove);
-                    tMap.HighlightTiles(range, hover.team == Team.Player ? Palette.AzureLight : Palette.CrimsonLight, 0.28f);
+                    var reach = tMap.MoveRange(hover.Tile, hover.playerClass.TileMove);
+                    bool mine = hover.team == Team.Player;
+                    tMap.HighlightTiles(Fringe(hover, reach), mine ? Palette.Crimson : Palette.CrimsonDark, 0.4f);
+                    tMap.HighlightTiles(reach, mine ? Palette.Azure : Palette.Crimson, 0.3f);
                 }
                 else GameUI.I.HideUnitCard();
             }
 
-            if (GameInput.Confirm)
-            {
-                if (hover != null && hover.team == Team.Player && !hover.isTurnOver)
-                {
-                    unit = hover;
-                    tMan.currentTurn = unit;
-                    AudioBank.I.Play(Sfx.UiConfirm);
-                    OpenMenu();
-                }
-                else AudioBank.I.Play(Sfx.UiCancel, 0.6f);
-            }
+            if (!GameInput.Confirm) return;
+            if (hover == null || hover.team != Team.Player || hover.isTurnOver) { AudioBank.I.Play(Sfx.UiCancel, 0.6f); return; }
+            AudioBank.I.Play(Sfx.UiConfirm);
+            unit = hover;
+            tMan.currentTurn = unit;
+            origin = unit.Tile;
+            originRotation = unit.transform.rotation;
+            EnterMove();
         }
 
-        // ---------------- menu ----------------
-
-        void OpenMenu()
+        // Tiles the unit could attack after moving anywhere in `reach`, outside `reach` itself.
+        List<TileMapInfo> Fringe(Player p, List<TileMapInfo> reach)
         {
-            pointer.inputEnabled = false;
-            pointer.SetTile(unit.tilePosition % tMap.tileX, unit.tilePosition / tMap.tileX);
-            tMap.ClearHighlights();
-            tMap.HighlightTile(tMap.tiles[unit.tilePosition], Palette.Gold, 0.45f);
-            GameUI.I.ShowUnitCard(unit);
-
-            menu = new KeyMenu(unit.playerClass.ClassName.ToUpper());
-            menu.Add("Move", () => EnterMove(), () => unit.moveEnabled);
-            menu.Add("Attack", () => EnterAttack(), () => unit.attackEnabled && tMan.TargetsInRange(unit).Count > 0);
-            menu.Add("Wait", () => EnterFacing());
-            menu.onCancel = InMenuCancel;
-            GameUI.I.ShowContextMenu(menu, unit.transform.position);
-            GameUI.I.SetHint("UP/DOWN  choose     Z  confirm     X  " + (unit.moveEnabled ? "back" : unit.attackEnabled ? "undo move" : "-"));
-            playerState = PlayerState.Menu;
-        }
-
-        void InMenuCancel()
-        {
-            // nothing committed yet -> back to picking; moved but not attacked -> undo the move
-            if (unit.moveEnabled && unit.attackEnabled) EnterPick();
-            else if (!unit.moveEnabled && unit.attackEnabled) CancelMove();
+            var set = new HashSet<TileMapInfo>();
+            foreach (var t in reach) set.UnionWith(tMap.AttackRange(t, p.Weapon.MinRange, p.Weapon.MaxRange));
+            set.ExceptWith(reach);
+            return set.ToList();
         }
 
         // ---------------- move ----------------
@@ -147,15 +131,14 @@ namespace LLTacticalWar
         void EnterMove()
         {
             GameUI.I.HideContextMenu();
-            previousPosition = unit.transform.position;
-            previousDirection = unit.playerDirection;
-            previousTile = unit.tilePosition;
-            moveTiles = tMap.MoveRange(tMap.tiles[unit.tilePosition], unit.playerClass.TileMove);
-            tMap.DetermineAvailableTiles(moveTiles);
+            GameUI.I.ShowUnitCard(unit);
+            moveTiles = tMap.MoveRange(unit.Tile, unit.playerClass.TileMove);
+            fringeTiles = Fringe(unit, moveTiles);
+            tMan.RefreshDanger();
             lastPointerIndex = -1;
             pointer.inputEnabled = true;
             GameUI.I.SetHint("ARROWS  choose tile     Z  move here     X  back");
-            playerState = PlayerState.Move;
+            Go(PlayerState.Move);
         }
 
         void Move()
@@ -165,170 +148,134 @@ namespace LLTacticalWar
             {
                 lastPointerIndex = tile.index;
                 tMap.ClearHighlights();
-                tMap.HighlightTiles(moveTiles, Palette.AzureLight, 0.42f);
+                tMap.HighlightTiles(fringeTiles, Palette.Crimson, 0.55f);
+                tMap.HighlightTiles(moveTiles, Palette.Azure, 0.45f);
                 if (moveTiles.Contains(tile))
-                    tMap.HighlightTiles(PathFinder.FindPath(tMap.tiles[unit.tilePosition], tile, moveTiles), Palette.Gold, 0.55f);
+                    tMap.HighlightTiles(PathFinder.FindPath(unit.Tile, tile, moveTiles), Palette.Gold, 0.6f);
             }
 
-            if (GameInput.Cancel) { AudioBank.I.Play(Sfx.UiCancel); tMap.ResetInRange(); OpenMenu(); return; }
+            if (GameInput.Cancel) { AudioBank.I.Play(Sfx.UiCancel); PointAt(unit.Tile); EnterPick(); return; }
             if (!GameInput.Confirm) return;
-
             if (!moveTiles.Contains(tile)) { AudioBank.I.Play(Sfx.UiCancel, 0.6f); return; }
             AudioBank.I.Play(Sfx.UiConfirm);
-            if (tile.index == unit.tilePosition) { tMap.ResetInRange(); OpenMenu(); return; }
+            if (tile == unit.Tile) { OpenMenu(); return; }
+            var path = PathFinder.FindPath(unit.Tile, tile, moveTiles);
+            if (path.Count >= 2) StartCoroutine(Walk(path));
+        }
 
-            var path = PathFinder.FindPath(tMap.tiles[unit.tilePosition], tile, moveTiles);
-            if (path.Count < 2) return;
+        IEnumerator Walk(List<TileMapInfo> path)
+        {
+            Go(PlayerState.Walking);
             pointer.inputEnabled = false;
-            playerState = PlayerState.Animation;
-            StartCoroutine(MovingAnimation(path));
-        }
-
-        IEnumerator MovingAnimation(List<TileMapInfo> path)
-        {
             GameUI.I.SetHint("");
+            tMap.ClearHighlights();
+            tMap.HighlightTiles(path, Palette.Gold, 0.45f);
             yield return unit.MoveAlong(path);
-            PostMoveCondition(path[path.Count - 1]);
-        }
-
-        void PostMoveCondition(TileMapInfo destination)
-        {
-            unit.moveEnabled = false;
-            tMan.PlaceUnit(unit, destination);
-            tMap.ResetInRange();
+            tMan.PlaceUnit(unit, path[path.Count - 1]);
             OpenMenu();
         }
 
-        void CancelMove()
+        // ---------------- menu ----------------
+
+        void OpenMenu()
         {
-            unit.transform.position = previousPosition;
-            unit.Rotate(previousDirection);
-            tMan.PlaceUnit(unit, tMap.tiles[previousTile]);
-            unit.moveEnabled = true;
-            unit.model.ResetMotionAnchor();
-            GameUI.I.FloatText(unit.transform.position + Vector3.up * 2f, "MOVE UNDONE", Palette.Parchment, 0.8f);
+            pointer.inputEnabled = false;
+            PointAt(unit.Tile);
+            tMan.RefreshDanger();
+            targets = tMan.TargetsInRange(unit).OrderBy(t => t.Tile.Distance(unit.Tile)).ThenBy(t => t.Tile.x).ToList();
+            tMap.ClearHighlights();
+            if (targets.Count > 0)
+                tMap.HighlightTiles(tMap.AttackRange(unit.Tile, unit.Weapon.MinRange, unit.Weapon.MaxRange), Palette.Crimson, 0.5f);
+            tMap.HighlightTile(unit.Tile, Palette.Gold, 0.45f);
+            GameUI.I.HideForecast();
+            GameUI.I.ShowUnitCard(unit);
+
+            var menu = new KeyMenu(unit.playerClass.ClassName.ToUpper());
+            menu.Add("Attack", EnterTarget, () => targets.Count > 0);
+            menu.Add("Wait", FinishUnit);
+            menu.onCancel = UndoMove;
+            GameUI.I.ShowContextMenu(menu, unit.transform.position);
+            GameUI.I.SetHint("UP/DOWN  choose     Z  confirm     X  undo move");
+            Go(PlayerState.Menu);
+        }
+
+        void UndoMove()
+        {
+            GameUI.I.HideContextMenu();
+            if (unit.Tile != origin)
+            {
+                tMan.PlaceUnit(unit, origin);
+                unit.transform.position = origin.position;
+                unit.model.ResetMotionAnchor();
+                GameUI.I.FloatText(unit.transform.position + Vector3.up * 2f, "MOVE UNDONE", Palette.Parchment, 0.8f);
+            }
+            unit.transform.rotation = originRotation;
             EnterMove();
         }
 
-        // ---------------- attack ----------------
+        // ---------------- target ----------------
 
-        void EnterAttack()
+        void EnterTarget()
         {
             GameUI.I.HideContextMenu();
-            attackTiles = tMap.AttackRange(tMap.tiles[unit.tilePosition], unit.playerClass.TileAttack);
-            tMap.DetermineAvailableTiles(attackTiles);
-            var targets = tMan.TargetsInRange(unit);
-            if (targets.Count > 0) pointer.SetTile(targets[0].tilePosition % tMap.tileX, targets[0].tilePosition / tMap.tileX);
-            lastPointerIndex = -1;
-            pointer.inputEnabled = true;
-            GameUI.I.SetHint("ARROWS  choose target     Z  attack     X  back");
-            playerState = PlayerState.Attack;
-        }
-
-        void Attack()
-        {
-            var tile = pointer.Tile;
-            if (tile.index != lastPointerIndex)
-            {
-                lastPointerIndex = tile.index;
-                tMap.ClearHighlights();
-                tMap.HighlightTiles(attackTiles, Palette.CrimsonLight, 0.4f);
-                var enemy = tile.occupant;
-                if (enemy != null && enemy.team == Team.Enemy && attackTiles.Contains(tile))
-                {
-                    tMap.HighlightTile(tile, Palette.Crimson, 0.7f);
-                    GameUI.I.ShowUnitCard(enemy);
-                    TurnManager.FlankBonus(unit, enemy, out var label);
-                    GameUI.I.SetHint((label ?? "FRONT ATTACK") + "     Z  attack     X  back");
-                }
-                // adjust the unit to look at the cursor, as the 2015 version did
-                unit.FaceTowards(tile.position);
-            }
-
-            if (GameInput.Cancel) { AudioBank.I.Play(Sfx.UiCancel); tMap.ResetInRange(); OpenMenu(); return; }
-            if (!GameInput.Confirm) return;
-
-            var target = tile.occupant;
-            if (target == null || target.team != Team.Enemy || !attackTiles.Contains(tile)) { AudioBank.I.Play(Sfx.UiCancel, 0.6f); return; }
-
-            pickedEnemy = target;
-            unit.FaceTowards(target.transform.position);
-            int bonus = TurnManager.FlankBonus(unit, target, out var flankLabel);
-            if (flankLabel != null)
-            {
-                GameUI.I.FloatText(target.transform.position + Vector3.up * 2.4f, flankLabel, Palette.Gold, 1.2f);
-                AudioBank.I.Play(Sfx.Flank);
-            }
-            tMap.ResetInRange();
-            tMap.ClearHighlights();
-            pointer.inputEnabled = false;
             GameUI.I.HideUnitCard();
-            playerState = PlayerState.InBattle;
-            tMan.battlesFought++;
-            WarSceneManager.instance.StartBattle(unit, pickedEnemy, Team.Player, bonus, flankLabel, PostAttackCondition);
+            GameUI.I.SetHint("ARROWS  cycle targets     Z  attack     X  back");
+            targetIndex = 0;
+            ShowTarget();
+            Go(PlayerState.Target);
         }
 
-        void PostAttackCondition()
+        void ShowTarget()
         {
-            unit.attackEnabled = false;
-            bool unitDead = !unit.isAlive;
-            if (!pickedEnemy.isAlive) tMan.RemoveUnit(pickedEnemy);
-            if (unitDead) tMan.RemoveUnit(unit);
-
-            if (tMan.CheckTacticResult()) { playerState = PlayerState.None; return; }
-
-            if (unitDead) { AfterUnitDone(); return; }
-            if (!unit.moveEnabled) EnterFacing();
-            else OpenMenu();
+            var t = targets[targetIndex];
+            PointAt(t.Tile);
+            unit.FaceTowards(t.transform.position);
+            tMap.ClearHighlights();
+            tMap.HighlightTiles(tMap.AttackRange(unit.Tile, unit.Weapon.MinRange, unit.Weapon.MaxRange), Palette.Crimson, 0.45f);
+            tMap.HighlightTile(t.Tile, Palette.Crimson, 0.75f);
+            GameUI.I.ShowForecast(Combat.Predict(unit, t));
         }
 
-        // ---------------- wait / facing ----------------
+        void Target()
+        {
+            int step = GameInput.RightPressed || GameInput.DownPressed ? 1 : GameInput.LeftPressed || GameInput.UpPressed ? -1 : 0;
+            if (step != 0 && targets.Count > 1)
+            {
+                targetIndex = (targetIndex + step + targets.Count) % targets.Count;
+                AudioBank.I.Play(Sfx.UiMove, 0.4f);
+                ShowTarget();
+            }
+            if (GameInput.Cancel) { AudioBank.I.Play(Sfx.UiCancel); OpenMenu(); return; }
+            if (GameInput.Confirm) { AudioBank.I.Play(Sfx.UiConfirm); StartCoroutine(Battle(targets[targetIndex])); }
+        }
 
-        void EnterFacing()
+        IEnumerator Battle(Player target)
+        {
+            Go(PlayerState.Battle);
+            GameUI.I.HideForecast();
+            GameUI.I.SetHint("");
+            tMap.ClearHighlights();
+            yield return tMan.Engage(unit, target);
+            if (tMan.CheckTacticResult()) { Go(PlayerState.None); yield break; }
+            FinishUnit();
+        }
+
+        // ---------------- done ----------------
+
+        void FinishUnit()
         {
             GameUI.I.HideContextMenu();
-            pointer.inputEnabled = false;
-            tMap.ClearHighlights();
-            facingMarker.gameObject.SetActive(true);
-            GameUI.I.SetHint("ARROWS  choose facing     Z  confirm");
-            playerState = PlayerState.Facing;
-        }
+            if (unit != null && unit.isAlive) unit.SetTurnOver(true);
+            var next = tMan.players.FirstOrDefault(p => !p.isTurnOver);
+            if (next != null) { PointAt(next.Tile); EnterPick(); return; }
 
-        void ChooseDirection()
-        {
-            if (GameInput.UpPressed) unit.Rotate(Player.Direction.North);
-            if (GameInput.RightPressed) unit.Rotate(Player.Direction.East);
-            if (GameInput.DownPressed) unit.Rotate(Player.Direction.South);
-            if (GameInput.LeftPressed) unit.Rotate(Player.Direction.West);
-            facingMarker.position = unit.transform.position;
-            facingMarker.rotation = unit.transform.rotation;
-
-            if (GameInput.Confirm)
-            {
-                AudioBank.I.Play(Sfx.UiConfirm);
-                facingMarker.gameObject.SetActive(false);
-                unit.SetTurnOver(true);
-                AfterUnitDone();
-            }
-        }
-
-        void AfterUnitDone()
-        {
-            var next = tMan.players.FirstOrDefault(p => p != null && !p.isTurnOver);
-            if (next == null) { playerState = PlayerState.End; return; }
-            pointer.SetTile(next.tilePosition % tMap.tileX, next.tilePosition / tMap.tileX);
-            EnterPick();
-        }
-
-        void EndTurn()
-        {
             pointer.inputEnabled = false;
             GameUI.I.HideUnitCard();
             GameUI.I.SetHint("");
             tMap.ClearHighlights();
+            Go(PlayerState.None);
             tMan.onGoingTurn = false;
             tMan.NextTurn();
-            playerState = PlayerState.None;
         }
     }
 }

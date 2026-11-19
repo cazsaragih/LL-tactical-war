@@ -92,6 +92,28 @@ namespace LLTacticalWar
             Emit(sparks, pos, teamColor, 3, 2.4f, 0.14f, 0.3f, Vector3.up * 0.4f);
         }
 
+        // Heavier sparks for a critical hit.
+        public void CritSparks(Vector3 pos, Color teamColor)
+        {
+            Emit(sparks, pos, Palette.Gold, 12, 5.5f, 0.16f, 0.4f, Vector3.up * 0.4f);
+            Emit(sparks, pos, Palette.Parchment, 6, 4f, 0.12f, 0.35f);
+            Emit(burst, pos, teamColor, 8, 3.2f, 0.24f, 0.45f, Vector3.up * 0.3f);
+        }
+
+        // The fire bolt's trail, emitted along its path each frame.
+        public void Embers(Vector3 pos)
+        {
+            Emit(sparks, pos, Palette.Gold, 1, 0.5f, 0.2f, 0.3f, Vector3.up * 1.5f);
+            Emit(sparks, pos, Palette.CrimsonLight, 1, 0.4f, 0.26f, 0.35f, Vector3.up * 1.5f);
+        }
+
+        public void FireBurst(Vector3 pos)
+        {
+            Emit(burst, pos, Palette.CrimsonLight, 14, 3.4f, 0.3f, 0.5f, Vector3.up * 0.8f);
+            Emit(burst, pos, Palette.Gold, 10, 2.6f, 0.24f, 0.45f, Vector3.up * 0.8f);
+            Emit(dust, pos, Palette.WithAlpha(Palette.Ink, 0.6f), 5, 1f, 0.4f, 0.6f, Vector3.up);
+        }
+
         public void DeathPuff(Vector3 pos) { Emit(dust, pos + Vector3.up * 0.3f, Palette.Canvas, 8, 1.4f, 0.45f, 0.6f, Vector3.up * 0.5f); }
         public void FootDust(Vector3 pos) { Emit(dust, pos + Vector3.up * 0.05f, Palette.WithAlpha(Palette.Canvas, 0.8f), 3, 0.7f, 0.3f, 0.35f, Vector3.up * 0.8f); }
 
