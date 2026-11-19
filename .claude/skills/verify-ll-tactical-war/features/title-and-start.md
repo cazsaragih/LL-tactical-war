@@ -22,7 +22,7 @@ Preconditions:
 
 - **Title shows.** Run `$S state` and `$S capture title`. You should see `shell: Title`, `turn: Setup`, `menu: none`, and a capture showing the title over the board.
 - **Start.** Press start with `$S press confirm`, then `$S wait 3` and `$S state`. You should see `shell: Playing`, `turn: PlayerTurn  round: 1`, `playerState: Pick`, and `cursor: (4,0) ... occupant: Fighter`.
-- **Proof.** Run `$S capture your-turn`. It shows the HUD with "YOUR TURN - ROUND 1", the army counts "YOUR ARMY 4 / ENEMY 4", and the hint bar "ARROWS move cursor  Z select unit  ESC pause".
+- **Proof.** Run `$S capture your-turn`. It shows the HUD with "YOUR TURN - ROUND 1", the army counts "YOUR ARMY 4 / ENEMY 4", and the hint bar "ARROWS move cursor  Z select unit  SHIFT danger zone  ESC pause".
 
 ## Gotchas
 

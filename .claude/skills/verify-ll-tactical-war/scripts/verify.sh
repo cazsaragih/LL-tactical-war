@@ -5,12 +5,13 @@
 #   verify.sh launch            open this project's Editor if needed, enter Play mode, keep it ticking
 #   verify.sh doctor            read-only: is the instance worth driving?
 #   verify.sh state             read-only snapshot (shell, turn, cursor, units, menu, battle)
-#   verify.sh press <action>    one simulated button press: confirm cancel pause up down left right attack skill command
+#   verify.sh press <action>    one simulated button press: confirm cancel pause up down left right danger
 #   verify.sh nudge <dx> <dz>   move the tactics cursor by whole tiles (+x east, +z north)
-#   verify.sh hold <x> <y> <s>  hold the battle move stick at (x,y) for s seconds
+#   verify.sh hold <action> <s> hold a button for s real seconds (hold confirm = battle at 2x)
 #   verify.sh wait <seconds>    let the game run
 #   verify.sh capture <name>    save the Game view to the run's evidence folder as <name>.png
-#   verify.sh errors            Editor console errors and exceptions
+#   verify.sh burst <name> <n> <gap>  n captures in parallel, gap seconds apart (<name>-0.png ...): for the battle scene
+#   verify.sh errors            Editor console errors and exceptions (launch clears the console first)
 #   verify.sh eval '<C#>'       raw script eval (namespace LLTacticalWar is imported)
 #   verify.sh cleanup           leave Play mode, stop forced ticking, close the Editor only if launch opened it
 #
@@ -73,6 +74,7 @@ case "${1:-}" in
       unity status --until-ready --timeout 300 >/dev/null || { echo "Editor never reached ready"; exit 1; }
     fi
     ucmd editor set_auto_tick -- --enabled true >/dev/null
+    ucmd console clear >/dev/null   # errors then belong to this run only
     ucmd editor.playmode start >/dev/null
     for _ in $(seq 1 30); do
       s="$(ev 'return GameManager.I != null ? GameManager.I.State.ToString() : "booting";' 2>/dev/null)"
@@ -95,10 +97,13 @@ r = r.get("result", r) if isinstance(r, dict) else r
 print(r if d.get("success") else d.get("errors"))' ;;
   press)   ev "GameInput.DebugPress(\"$2\"); return \"pressed $2 at frame \" + UnityEngine.Time.frameCount;" ;;
   nudge)   ev "GameInput.debugCursorNudge = new UnityEngine.Vector2Int($2, $3); return \"nudge ($2,$3)\";" ;;
-  hold)    ev "GameInput.DebugHold(new UnityEngine.Vector2($2f, $3f), $4f); return \"hold ($2,$3) for $4s\";" ;;
+  hold)    ev "GameInput.DebugHold(\"$2\", $3f); return \"hold $2 for $3s\";" ;;
   wait)    sleep "$2"; echo "waited $2s" ;;
   capture) mkdir -p "$RUN_DIR"
            ucmd capture game_view -- --output-path "$(cygpath -w "$RUN_DIR/$2.png" 2>/dev/null || echo "$RUN_DIR/$2.png")" >/dev/null && echo "$RUN_DIR/$2.png" ;;
+  burst)   mkdir -p "$RUN_DIR"
+           for i in $(seq 0 $(($3 - 1))); do ( sleep "$(python -c "print($i * $4)")"; "$0" capture "$2-$i" >/dev/null ) & done
+           wait; ls "$RUN_DIR" | grep "^$2-" ;;
   errors)  ucmd console get --format json -- --level error --tail 30 2>&1 | python -c '
 import sys, json
 d = json.load(sys.stdin); r = d.get("data", {}).get("result", {})
