@@ -44,11 +44,13 @@ namespace LLTacticalWar.EditorTools
             var toon = Shader.Find("LLTacticalWar/Toon");
             var sky = Shader.Find("LLTacticalWar/SkyGradient");
             var sprite = Shader.Find("Sprites/Default");
-            if (toon == null || sky == null || sprite == null) { Debug.LogError("[ProjectSetup] a shader is missing: Toon, SkyGradient or Sprites/Default."); return; }
+            var wash = Shader.Find("LLTacticalWar/InkWash");
+            if (toon == null || sky == null || sprite == null || wash == null) { Debug.LogError("[ProjectSetup] a shader is missing: Toon, SkyGradient, InkWash or Sprites/Default."); return; }
             Save(new Material(toon) { name = "Toon" }, "Toon");
             Save(new Material(sky) { name = "Sky" }, "Sky");
             Save(new Material(sprite) { name = "Overlay" }, "Overlay");
             Save(new Material(sprite) { name = "Particle" }, "Particle");
+            Save(new Material(wash) { name = "InkWash" }, "InkWash");
             AssetDatabase.SaveAssets();
         }
 

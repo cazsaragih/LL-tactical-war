@@ -32,10 +32,9 @@ namespace LLTacticalWar
             tMan.onGoingTurn = true;
             foreach (var e in tMan.enemies) e.SetTurnOver(false);
             tMan.RefreshDanger();
-            GameUI.I.Banner("ENEMY TURN", "ROUND " + tMan.round, Palette.Crimson);
-            GameUI.I.SetTurnInfo("ENEMY TURN  -  ROUND " + tMan.round, Palette.CrimsonLight);
+            GameUI.I.Banner("Enemy Turn", "Round " + tMan.round, Team.Enemy);
+            GameUI.I.SetTurnInfo(Team.Enemy, tMan.round);
             GameUI.I.SetHint("The enemy is moving...     ESC  pause");
-            AudioBank.I.Play(Sfx.Turn);
             pointer.inputEnabled = false;
             StartCoroutine(RunTurn());
         }

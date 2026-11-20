@@ -49,7 +49,7 @@ namespace LLTacticalWar
             {
                 tMan.dangerOn = !tMan.dangerOn;
                 tMan.RefreshDanger();
-                AudioBank.I.Play(tMan.dangerOn ? Sfx.UiConfirm : Sfx.UiCancel, 0.6f);
+                Feel.Ack(tMan.dangerOn ? Ack.Confirm : Ack.Cancel, 0.6f);
             }
             switch (State)
             {
@@ -65,9 +65,8 @@ namespace LLTacticalWar
         {
             tMan.onGoingTurn = true;
             foreach (var p in tMan.players) p.SetTurnOver(false);
-            GameUI.I.Banner("YOUR TURN", "ROUND " + tMan.round, Palette.Azure);
-            GameUI.I.SetTurnInfo("YOUR TURN  -  ROUND " + tMan.round, Palette.AzureLight);
-            AudioBank.I.Play(Sfx.Turn);
+            GameUI.I.Banner("Your Turn", "Round " + tMan.round, Team.Player);
+            GameUI.I.SetTurnInfo(Team.Player, tMan.round);
             var first = tMan.players.FirstOrDefault();
             if (first != null) PointAt(first.Tile);
             EnterPick();
@@ -108,8 +107,8 @@ namespace LLTacticalWar
             }
 
             if (!GameInput.Confirm) return;
-            if (hover == null || hover.team != Team.Player || hover.isTurnOver) { AudioBank.I.Play(Sfx.UiCancel, 0.6f); return; }
-            AudioBank.I.Play(Sfx.UiConfirm);
+            if (hover == null || hover.team != Team.Player || hover.isTurnOver) { Feel.Ack(Ack.Refuse); return; }
+            Feel.Ack(Ack.Confirm);
             unit = hover;
             tMan.currentTurn = unit;
             origin = unit.Tile;
@@ -154,10 +153,10 @@ namespace LLTacticalWar
                     tMap.HighlightTiles(PathFinder.FindPath(unit.Tile, tile, moveTiles), Palette.Gold, 0.6f);
             }
 
-            if (GameInput.Cancel) { AudioBank.I.Play(Sfx.UiCancel); PointAt(unit.Tile); EnterPick(); return; }
+            if (GameInput.Cancel) { Feel.Ack(Ack.Cancel); PointAt(unit.Tile); EnterPick(); return; }
             if (!GameInput.Confirm) return;
-            if (!moveTiles.Contains(tile)) { AudioBank.I.Play(Sfx.UiCancel, 0.6f); return; }
-            AudioBank.I.Play(Sfx.UiConfirm);
+            if (!moveTiles.Contains(tile)) { Feel.Ack(Ack.Refuse); return; }
+            Feel.Ack(Ack.Confirm);
             if (tile == unit.Tile) { OpenMenu(); return; }
             var path = PathFinder.FindPath(unit.Tile, tile, moveTiles);
             if (path.Count >= 2) StartCoroutine(Walk(path));
@@ -242,11 +241,11 @@ namespace LLTacticalWar
             if (step != 0 && targets.Count > 1)
             {
                 targetIndex = (targetIndex + step + targets.Count) % targets.Count;
-                AudioBank.I.Play(Sfx.UiMove, 0.4f);
+                Feel.Ack(Ack.Move);
                 ShowTarget();
             }
-            if (GameInput.Cancel) { AudioBank.I.Play(Sfx.UiCancel); OpenMenu(); return; }
-            if (GameInput.Confirm) { AudioBank.I.Play(Sfx.UiConfirm); StartCoroutine(Battle(targets[targetIndex])); }
+            if (GameInput.Cancel) { Feel.Ack(Ack.Cancel); OpenMenu(); return; }
+            if (GameInput.Confirm) { Feel.Ack(Ack.Confirm); StartCoroutine(Battle(targets[targetIndex])); }
         }
 
         IEnumerator Battle(Player target)

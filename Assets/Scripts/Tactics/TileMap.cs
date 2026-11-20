@@ -74,8 +74,8 @@ namespace LLTacticalWar
 
         void BuildOverlay()
         {
-            danger = new OverlayLayer(this, "DangerZone", 0.04f, 3000);
-            highlights = new OverlayLayer(this, "Highlights", 0.05f, 3001);
+            danger = new OverlayLayer(this, "DangerZone", 0.04f, 3000, true);
+            highlights = new OverlayLayer(this, "Highlights", 0.05f, 3001, false);
         }
 
         // ---------------- highlights ----------------
@@ -84,21 +84,21 @@ namespace LLTacticalWar
 
         public void HighlightTiles(IEnumerable<TileMapInfo> list, Color color, float alpha = 0.5f)
         {
-            foreach (var t in list) highlights.Paint(t, color, alpha, false);
+            foreach (var t in list) highlights.Paint(t, color, alpha);
             highlights.Push();
         }
 
         public void HighlightTile(TileMapInfo t, Color color, float alpha = 0.6f)
         {
-            highlights.Paint(t, color, alpha, false);
+            highlights.Paint(t, color, alpha);
             highlights.Push();
         }
 
-        // The danger zone: striped so it reads apart from a unit's own attack range.
+        // The danger zone: cross-hatched so it reads apart from a unit's own attack range.
         public void ShowDanger(IEnumerable<TileMapInfo> list)
         {
             danger.Clear();
-            if (list != null) foreach (var t in list) danger.Paint(t, Palette.Crimson, 0.34f, true);
+            if (list != null) foreach (var t in list) danger.Paint(t, Palette.Crimson, 0.4f);
             danger.Push();
         }
 
@@ -167,24 +167,21 @@ namespace LLTacticalWar
         }
     }
 
-    // One transparent quad over the board, PerTile texels per tile, so a highlighted tile gets
-    // a fill and a brighter one-texel rim.
+    // One transparent quad over the board, drawn by the InkWash shader from one texel per tile
+    // (colour, strength): an inked hatch wash per region of like tiles, crossed for the danger zone.
     public sealed class OverlayLayer
     {
-        const int PerTile = 12;
         readonly Texture2D tex;
         readonly Color32[] px;
-        readonly int width;
 
-        public OverlayLayer(TileMap map, string name, float height, int renderQueue)
+        public OverlayLayer(TileMap map, string name, float height, int renderQueue, bool crossHatch)
         {
-            width = map.tileX * PerTile;
-            tex = new Texture2D(width, map.tileZ * PerTile, TextureFormat.RGBA32, false)
+            tex = new Texture2D(map.tileX, map.tileZ, TextureFormat.RGBA32, false)
             {
                 filterMode = FilterMode.Point,
                 wrapMode = TextureWrapMode.Clamp
             };
-            px = new Color32[width * map.tileZ * PerTile];
+            px = new Color32[map.tileX * map.tileZ];
             Push();
 
             var mesh = new Mesh { name = name };
@@ -198,8 +195,11 @@ namespace LLTacticalWar
             go.transform.localPosition = new Vector3(0, height, 0);
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var r = go.AddComponent<MeshRenderer>();
-            var mat = Palette.Overlay();
+            var mat = Palette.InkWash();
             mat.mainTexture = tex;
+            mat.SetColor("_Ink", Palette.Ink);
+            mat.SetVector("_Tiles", new Vector4(map.tileX, map.tileZ, 0f, 0f));
+            mat.SetFloat("_Cross", crossHatch ? 1f : 0f);
             mat.renderQueue = renderQueue;   // same quad size, so sort by queue, not distance
             r.sharedMaterial = mat;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -208,20 +208,8 @@ namespace LLTacticalWar
 
         public void Clear() => System.Array.Clear(px, 0, px.Length);
 
-        public void Paint(TileMapInfo t, Color color, float alpha, bool striped)
-        {
-            Color32 fill = Palette.WithAlpha(color, alpha);
-            Color32 faint = Palette.WithAlpha(color, alpha * 0.35f);
-            Color32 rim = Palette.WithAlpha(Color.Lerp(color, Palette.Parchment, 0.3f), Mathf.Min(1f, alpha * 1.9f));
-            for (int y = 0; y < PerTile; y++)
-                for (int x = 0; x < PerTile; x++)
-                {
-                    bool edge = x == 0 || y == 0 || x == PerTile - 1 || y == PerTile - 1;
-                    bool gap = striped && (x + y) % 6 >= 3;
-                    px[(t.z * PerTile + y) * width + t.x * PerTile + x] = edge ? rim : gap ? faint : fill;
-                }
-        }
+        public void Paint(TileMapInfo t, Color color, float alpha) => px[t.index] = Palette.WithAlpha(color, alpha);
 
-        public void Push() { tex.SetPixels32(px); tex.Apply(); }
+        public void Push() { tex.SetPixels32(px); tex.Apply(false); }
     }
 }

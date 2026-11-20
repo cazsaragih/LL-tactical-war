@@ -1,6 +1,6 @@
 # Title and start
 
-The game opens on a title screen over an orbiting camera. Pressing start fades to the tactics map, where the player's first turn begins with a "YOUR TURN · ROUND 1" banner.
+The game opens on a title screen over an orbiting camera. Pressing start fades to the tactics map, where the player's first turn begins with a "Your Turn · Round 1" scroll that unrolls to a horn call.
 
 ## Sub-features
 
@@ -22,7 +22,7 @@ Preconditions:
 
 - **Title shows.** Run `$S state` and `$S capture title`. You should see `shell: Title`, `turn: Setup`, `menu: none`, and a capture showing the title over the board.
 - **Start.** Press start with `$S press confirm`, then `$S wait 3` and `$S state`. You should see `shell: Playing`, `turn: PlayerTurn  round: 1`, `playerState: Pick`, and `cursor: (4,0) ... occupant: Fighter`.
-- **Proof.** Run `$S capture your-turn`. It shows the HUD with "YOUR TURN - ROUND 1", the army counts "YOUR ARMY 4 / ENEMY 4", and the hint bar "ARROWS move cursor  Z select unit  SHIFT danger zone  ESC pause".
+- **Proof.** Run `$S capture your-turn`. It shows the turn plate "Your Turn · Round 1" (set in small caps), the army plate with a blue and a red seal and the counts 4 and 4, and the hint slip "ARROWS move cursor  Z select unit  SHIFT danger zone  ESC pause".
 
 ## Gotchas
 

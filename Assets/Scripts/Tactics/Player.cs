@@ -62,6 +62,7 @@ namespace LLTacticalWar
                 yield return Ease.Tween(dur, k => transform.position = Vector3.Lerp(from, to, k), Ease.Linear, false);
                 AudioBank.I?.Play(Sfx.Step, 0.5f);
             }
+            model.Land();   // a hop and a settle on the last tile; the walk itself is already done
         }
 
         public void SetTurnOver(bool over)

@@ -7,8 +7,8 @@ When a foe is within the unit's weapon range, the player chooses Attack, cycles 
 - `attack-menu` enables Attack only when a foe is in range from the unit's current tile (weapon min to max range, so a bow can't attack at distance 1).
 - `target-cycle` moves the cursor to the first target. Arrows cycle through valid targets only. X returns to the menu.
 - `forecast` shows player left (blue) and enemy right (crimson): name, weapon with a triangle marker, HP now and after (if every hit lands), DMG (x2 when doubling), HIT, CRIT, and BREAK on the side that would break the other. A side that can't counter shows `--`.
-- `battle-scene` fades to the stage with both HUD panels (name, weapon, HP number and bar with a pale ghost segment, HIT, DMG, CRIT). Melee lunges, bows loose an arcing arrow, Fire sends a bolt.
-- `strike-feel`: a hit flashes and knocks back the target, sparks, a short hit-stop, a shake and a rising damage number. A miss sidesteps with MISS. A crit slows, pushes the camera in, flashes and pops CRITICAL. Break stamps BREAK and staggers. A kill collapses the target and holds a beat.
+- `battle-scene` fades to the stage with both HUD cards (each side's wax seal, name, weapon, HP number and bar with a gold ghost segment, HIT, DMG, CRIT). Melee lunges, bows loose an arcing arrow, Fire sends a bolt.
+- `strike-feel`: a hit flashes and knocks back the target, sparks, a short hit-stop, a shake and a rising damage number. A miss hops back with MISS and hops home. A crit slows, pushes the camera in, flashes and pops CRITICAL. Break stamps BREAK and staggers. A kill collapses the target and holds a beat.
 - `battle-speed` plays at 2x while Z is held. X skips to the result. Neither changes the outcome.
 - `break` stops the broken unit's counters until its own side's next phase.
 - `battle-result` returns to the map with HP, `[broken]` and deaths written back. The attacking unit is `[done]`.

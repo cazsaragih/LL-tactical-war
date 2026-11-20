@@ -41,7 +41,7 @@ namespace LLTacticalWar
         public static readonly Color FillLight  = H("#B9C9E6");   // the shadowless lift from the south-east
         public static readonly Color Shade      = H("#6B73A8");   // the toon shadow band's light: cool blue-violet, never black
         public static readonly Color RimWarm    = H("#FFCF8A");   // the thin rim that lifts figures off the board
-        public static readonly Color SkyTop     = H("#7FA9DA");   // zenith
+        public static readonly Color SkyTop     = H("#5F98DA");   // zenith: a clear late-morning blue
         public static readonly Color Haze       = H("#AFC0D3");   // horizon, fog and far atmosphere: blue-grey, never beige
         public static readonly Color AmbientSky = H("#9DB7D6");
         public static readonly Color AmbientEq  = H("#9C9C98");
@@ -51,10 +51,15 @@ namespace LLTacticalWar
         public static readonly Color GradeShadows    = Color.HSVToRGB(0.64f, 0.32f, 0.56f);   // cool blue-violet
         public static readonly Color GradeHighlights = Color.HSVToRGB(0.09f, 0.30f, 0.56f);   // warm amber
 
-        // UI
-        public static readonly Color Panel      = H("#1E2430");
-        public static readonly Color PanelLight = H("#2C3444");
-        public static readonly Color Parchment  = H("#F3EAD3");
+        // UI: the general's paperwork. Parchment cards written in ink, brass fittings, wax seals in
+        // the two banner colours (UiKit draws them all).
+        public static readonly Color Parchment  = H("#F3EAD3");   // light paper: text lifted over the world
+        public static readonly Color Paper      = H("#E9DCBB");   // a card's face
+        public static readonly Color PaperDark  = H("#CDB88D");   // its burnt edge, an empty bar's trough
+        public static readonly Color InkFaded   = H("#7A6E58");   // labels and second lines on paper
+        public static readonly Color Brass      = H("#C3923A");   // corner fittings, the map pin
+        public static readonly Color BrassDark  = H("#7C5A21");
+        public static readonly Color BrassLight = H("#F1D58A");
         public static readonly Color Muted      = H("#8E96A3");
 
         public static Color Team(Team t)      => t == LLTacticalWar.Team.Player ? Azure : Crimson;
@@ -109,6 +114,7 @@ namespace LLTacticalWar
             sky = new Material(Resources.Load<Material>("Materials/Sky")) { name = "Sky" };
             sky.SetColor("_Zenith", SkyTop);
             sky.SetColor("_Horizon", Haze);
+            sky.SetColor("_Glow", SunKey);
             return sky;
         }
 
@@ -161,6 +167,9 @@ namespace LLTacticalWar
             }
             return new Material(overlayBase);
         }
+
+        // The board's tile washes (Assets/Shaders/InkWash.shader): one instance per overlay layer.
+        public static Material InkWash() => new Material(Resources.Load<Material>("Materials/InkWash"));
 
         public static Material Particle()
         {

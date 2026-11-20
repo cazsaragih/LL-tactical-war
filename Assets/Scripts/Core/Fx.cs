@@ -117,6 +117,24 @@ namespace LLTacticalWar
         public void DeathPuff(Vector3 pos) { Emit(dust, pos + Vector3.up * 0.3f, Palette.Canvas, 8, 1.4f, 0.45f, 0.6f, Vector3.up * 0.5f); }
         public void FootDust(Vector3 pos) { Emit(dust, pos + Vector3.up * 0.05f, Palette.WithAlpha(Palette.Canvas, 0.8f), 3, 0.7f, 0.3f, 0.35f, Vector3.up * 0.8f); }
 
+        // A ring of dust kicked out flat round a figure's feet as it lands on a tile.
+        public void LandPuff(Vector3 pos)
+        {
+            if (dust == null) return;
+            var p = new ParticleSystem.EmitParams();
+            for (int i = 0; i < 9; i++)
+            {
+                float a = (i + Random.value * 0.6f) / 9f * Mathf.PI * 2f;
+                var dir = new Vector3(Mathf.Cos(a), 0.18f, Mathf.Sin(a));
+                p.position = pos + dir * 0.25f + Vector3.up * 0.06f;
+                p.velocity = dir * Random.Range(0.9f, 1.4f);
+                p.startColor = Palette.WithAlpha(Color.Lerp(Palette.Canvas, Palette.Soil, 0.35f), 0.85f);
+                p.startSize = Random.Range(0.26f, 0.38f);
+                p.startLifetime = Random.Range(0.32f, 0.45f);
+                dust.Emit(p, 1);
+            }
+        }
+
         public void TeamBurst(Vector3 pos, Color teamColor)
         {
             Emit(burst, pos, teamColor, 14, 3f, 0.3f, 0.6f, Vector3.up * 0.5f);

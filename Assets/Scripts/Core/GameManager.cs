@@ -28,7 +28,7 @@ namespace LLTacticalWar
         Camera cam;
         CinemachineBrain brain;
         CinemachineCamera tacticCam, titleCam;
-        Transform boardCenter;
+        Transform boardCenter, mapFocus;
         PointerScript pointer;
         TileMap map;
         float titleTime;
@@ -105,8 +105,7 @@ namespace LLTacticalWar
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
             RenderSettings.fogColor = Palette.Haze;
-            RenderSettings.fogStartDistance = 40f;
-            RenderSettings.fogEndDistance = 175f;
+            SetFog(FieldFog);
 
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
@@ -151,6 +150,12 @@ namespace LLTacticalWar
             vol.sharedProfile = profile;
         }
 
+        // Haze: the field's distance fades into the horizon colour; the battle stage keeps its backdrop
+        // hills and keep clear of it, so the duel stands against a blue sky.
+        static readonly Vector2 FieldFog = new Vector2(80f, 320f), StageFog = new Vector2(120f, 420f);
+
+        static void SetFog(Vector2 range) { RenderSettings.fogStartDistance = range.x; RenderSettings.fogEndDistance = range.y; }
+
         Light NewLight(string name, Color color, float intensity, Quaternion rotation, LightShadows shadows)
         {
             var light = new GameObject(name).AddComponent<Light>();
@@ -187,7 +192,10 @@ namespace LLTacticalWar
 
         void BuildCameras()
         {
-            // tactics: looks down at the board, follows the cursor with damping
+            // tactics: looks down at the board, follows the cursor (through a framing clamp) with damping
+            mapFocus = new GameObject("MapFocus").transform;
+            mapFocus.SetParent(TacticRoot, false);
+            UpdateMapFocus(true);
             tacticCam = new GameObject("CM_Tactic").AddComponent<CinemachineCamera>();
             tacticCam.transform.SetParent(TacticRoot, false);
             tacticCam.transform.rotation = Quaternion.LookRotation(-MapOffset);
@@ -197,9 +205,10 @@ namespace LLTacticalWar
             follow.FollowOffset = MapOffset;
             follow.TrackerSettings.BindingMode = BindingMode.WorldSpace;
             follow.TrackerSettings.PositionDamping = new Vector3(0.45f, 0.45f, 0.45f);
-            tacticCam.Follow = pointer.transform;
+            tacticCam.Follow = mapFocus;
             tacticCam.Priority = 10;
-            Lens(tacticCam, 300f, 3.2f, CinemachineVolumeSettings.FocusTrackingMode.FollowTarget);
+            // the miniature's focus stays on the pin, wherever the framing sits
+            Lens(tacticCam, 300f, 3.2f, CinemachineVolumeSettings.FocusTrackingMode.CustomTarget, pointer.transform);
 
             // title backdrop: a slow orbit of the live board, the board in soft miniature focus
             titleCam = new GameObject("CM_Title").AddComponent<CinemachineCamera>();
@@ -221,7 +230,32 @@ namespace LLTacticalWar
             // the horizon past the castles.
             titleTime += dt;
             float a = (90f + 30f * Mathf.Sin(titleTime * 0.08f)) * Mathf.Deg2Rad;
-            titleCam.transform.position = map.Center + new Vector3(Mathf.Sin(a) * 46f, 15f, Mathf.Cos(a) * 46f);
+            titleCam.transform.position = map.Center + new Vector3(Mathf.Sin(a) * 46f, 13f, Mathf.Cos(a) * 46f);
+        }
+
+        // The map camera frames the board, not the meadow round it: it follows the pin, clamped so the
+        // frame's bottom edge never falls more than BoardMargin.x below the board's near edge, nor its
+        // top past BoardMargin.y beyond the far one, nor its near corners past the board's sides. At the
+        // default lens the whole field stays in view with the near rows above the HUD.
+        static readonly Vector3 BoardMargin = new Vector3(2.4f, 4.6f, 1.2f);   // near, far (clear of the top plates), sides
+
+        void UpdateMapFocus(bool snap = false)
+        {
+            float fov = (tacticCam != null ? tacticCam.Lens.FieldOfView : 30f) * 0.5f * Mathf.Deg2Rad;
+            float h = MapOffset.y, back = -MapOffset.z, pitch = Mathf.Atan2(h, back);
+            float near = h / Mathf.Tan(pitch + fov) - back, far = h / Mathf.Tan(pitch - fov) - back;
+            float halfW = h / Mathf.Sin(pitch + fov) * Mathf.Cos(fov) * Mathf.Tan(fov) * cam.aspect;
+            float w = map.tileX * map.tileSize, d = map.tileZ * map.tileSize;
+            float zMin = -BoardMargin.x - near, zMax = d + BoardMargin.y - far;
+            float xMin = halfW - BoardMargin.z, xMax = w - halfW + BoardMargin.z;
+            var p = pointer.transform.position;
+            mapFocus.position = new Vector3(xMin <= xMax ? Mathf.Clamp(p.x, xMin, xMax) : w / 2f, 0f,
+                                            zMin <= zMax ? Mathf.Clamp(p.z, zMin, zMax) : (zMin + zMax) / 2f);
+        }
+
+        void LateUpdate()
+        {
+            if (mapFocus != null && TacticRoot.gameObject.activeInHierarchy) UpdateMapFocus();
         }
 
         void Update()
@@ -302,6 +336,7 @@ namespace LLTacticalWar
             brain.DefaultBlend = new CinemachineBlendDefinition(CinemachineBlendDefinition.Styles.Cut, 0f);
             TacticRoot.gameObject.SetActive(!on);
             BattleRoot.gameObject.SetActive(on);
+            SetFog(on ? StageFog : FieldFog);
             StartCoroutine(RestoreBlend());
         }
 
@@ -324,11 +359,11 @@ namespace LLTacticalWar
             AudioBank.I.Play(victory ? Sfx.Victory : Sfx.Defeat);
             if (victory) Fx.I.Confetti(cam.transform.position + cam.transform.forward * 8f - Vector3.up * 2f);
             var t = TurnManager.instance;
-            string stats = "ROUNDS " + t.round + "     BATTLES " + t.battlesFought + "     ENEMIES DEFEATED " + t.enemiesDefeated + "     UNITS LOST " + t.unitsLost;
+            var ledger = new[] { ("Rounds", t.round), ("Battles", t.battlesFought), ("Enemies Defeated", t.enemiesDefeated), ("Units Lost", t.unitsLost) };
             var menu = new KeyMenu();
             menu.Add("Play Again", Restart);
             menu.Add("Quit Game", QuitGame);
-            GameUI.I.ShowEnded(victory, stats, menu);
+            GameUI.I.ShowEnded(victory, ledger, menu);
         }
     }
 }

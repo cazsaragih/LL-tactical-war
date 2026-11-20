@@ -21,9 +21,9 @@ namespace LLTacticalWar
         const float Fade = 0.07f;        // cross-fade time constant: ~95% blended in 0.2 s
         const float FadeLead = 0.15f;    // a one-shot starts handing back this long before it ends
         const float Straddle = 65f;      // a rider's thighs open this far around the vertical
-        const float FlashGain = 0.8f;
         const float DimMul = 0.55f;      // a spent unit greys out: darker, and lifted toward flat grey
         static readonly Color DimLift = Palette.Muted * 0.28f;
+        static readonly Color FallenLift = Palette.Shade * 0.16f;   // the fallen go ashen, not black
 
         Rig body, mount;                 // mount is null on foot
         Rig Legs => mount ?? body;       // the rig that carries the figure over the ground
@@ -43,9 +43,10 @@ namespace LLTacticalWar
         Vector3 lastPos;
         float groundSpeed, speedN, steps, idleT, yawLag, lastYaw;
         bool yawPrimed;
-        float punchT = -1f, flashT = -1f;
-        bool dimmed, dead;
+        float punchT = -1f, flashT = -1f, landT = -1f, homeT = -1f;
+        bool dimmed, dead, glint, dodging, puffed;
         Vector3 baseScale = Vector3.one;
+        Vector3 dodgeAway, carry, carryFrom;   // the dodge clip's step back (model space) and how much of it the root holds
 
         public void Init(UnitLook look, Animator rider, Animator mountAnimator)
         {
@@ -65,10 +66,27 @@ namespace LLTacticalWar
                                 new[] { (Slot.Move, m.WalkSpeed), (Slot.Gallop, m.GallopSpeed) });
             }
 
+            if (look.Mount == null) dodgeAway = StepOf(rider.gameObject, Find(clips, look.Dodge));
             idleT = Random.value * 10f;
             baseScale = transform.localScale;
             CacheRenderers();
             ResetMotionAnchor();
+        }
+
+        // Where a clip leaves the feet (their midpoint, on the ground plane, model space) against
+        // where it starts them: the dodge's hop back.
+        Vector3 StepOf(GameObject rig, AnimationClip clip)
+        {
+            if (clip == null) return Vector3.zero;
+            var feet = new[] { UnitFactory.Bone(rig.transform, "foot.l"), UnitFactory.Bone(rig.transform, "foot.r") };
+            if (feet[0] == null || feet[1] == null) return Vector3.zero;
+            Vector3 Mid() => transform.InverseTransformPoint((feet[0].position + feet[1].position) * 0.5f);
+            clip.SampleAnimation(rig, 0f);
+            var from = Mid();
+            clip.SampleAnimation(rig, clip.length);
+            var step = Mid() - from;
+            step.y = 0f;
+            return step;
         }
 
         static AnimationClip Find(AnimationClip[] clips, string name)
@@ -117,20 +135,24 @@ namespace LLTacticalWar
         }
 
         // Dimmed, fallen or flashing: the toon shader multiplies _BaseColor and adds _EmissionColor
-        // on every part, flat or atlas-textured.
+        // on every part, flat or atlas-textured. A hit flashes warm light over the figure; a crit's
+        // glint only warms it in brass, so a big mount never turns pale. The fallen lose their colour
+        // toward a cool grey and keep their value, so they read as down, not as a black hole.
         void ApplyTint(float flash)
         {
             if (mpb == null) return;
-            float mul = dead ? 0.6f : dimmed ? DimMul : 1f;
-            var lift = dimmed && !dead ? DimLift : Color.black;
+            float mul = dead ? 0.92f : dimmed ? DimMul : 1f;
+            var lift = dead ? FallenLift : dimmed ? DimLift : Color.black;
+            float flashBase = glint ? 0f : 0.45f * flash;
+            var flashGlow = glint ? Palette.Gold * (0.45f * flash) : Palette.SunKey * (0.5f * flash);
             foreach (var (r, slot, color) in tinted)
             {
                 if (r == null) continue;
-                var c = color * mul;
+                var c = dead ? Color.Lerp(color, Palette.Shade * (color.grayscale * 1.6f), 0.6f) * mul : color * mul;
                 c.a = 1f;
                 r.GetPropertyBlock(mpb, slot);
-                mpb.SetColor(BaseColorId, Color.Lerp(c, Palette.Parchment, flash));
-                mpb.SetColor(EmissionId, Color.Lerp(lift, Palette.Parchment * FlashGain, flash));
+                mpb.SetColor(BaseColorId, Color.Lerp(c, Palette.SunKey, flashBase));
+                mpb.SetColor(EmissionId, lift + flashGlow);
                 r.SetPropertyBlock(mpb, slot);
             }
         }
@@ -157,12 +179,24 @@ namespace LLTacticalWar
             return lands;
         }
 
-        public void Hit(bool heavy) { Play(heavy ? Slot.HeavyHit : Slot.Hit, 1.15f); flashT = 0f; }
-        public void Dodge() => Play(Slot.Dodge, 1f);
+        public void Hit(bool heavy) { Play(heavy ? Slot.HeavyHit : Slot.Hit, 1.15f); flashT = 0f; glint = false; }
+
+        // A hop back from the blow and, once the clip is done, a hop home (see Carry): the feet never slide.
+        public void Dodge()
+        {
+            if (dead) return;
+            Play(Slot.Dodge, 1f);
+            dodging = dodgeAway != Vector3.zero;
+            homeT = -1f;
+        }
+
         public void Cheer() => Play(Slot.Cheer, 1f);
 
-        // A glint: flash and a scale pop, no clip.
-        public void Punch() { punchT = 0f; flashT = 0f; }
+        // A glint: a scale pop and a brass warmth, no clip.
+        public void Punch() { punchT = 0f; flashT = 0f; glint = true; }
+
+        // Arrival on a tile: a small hop, a squash as it lands with a puff of dust, and it settles.
+        public void Land() { if (!dead) { landT = 0f; puffed = false; } }
 
         public void Die()
         {
@@ -170,7 +204,7 @@ namespace LLTacticalWar
             Play(Slot.Death, 1f, true);
             dead = true;
             // clear any hit flash mid-blend and darken the fallen so they read as down, not lit
-            flashT = punchT = -1f;
+            flashT = punchT = landT = -1f;
             transform.localScale = baseScale;
             ApplyTint(0f);
         }
@@ -197,6 +231,7 @@ namespace LLTacticalWar
             speedN = Mathf.Clamp01(groundSpeed / Mathf.Max(0.1f, maxSpeed));
             idleT += dt;
 
+            float lift = Carry(dt, body.Weight(Slot.Dodge), body.Playing(Slot.Dodge), body.Progress(Slot.Dodge));
             float at = Legs.Blend(dt, groundSpeed);
             if (mount != null) body.Blend(dt, 0f);
             if (at >= 0f) FootFalls(at);
@@ -208,7 +243,29 @@ namespace LLTacticalWar
             }
             // the hung cloth stirs at rest and streams back on the run
             if (flag != null) flag.localRotation = Quaternion.Euler(Mathf.Sin(idleT * 2.2f) * 6f + 24f * speedN, 0f, Mathf.Sin(idleT * 1.3f) * 4f);
-            Punches(dt);
+            Punches(dt, lift);
+        }
+
+        // The dodge as two hops. The clip carries the figure back with its feet low (it was made for root
+        // motion), so the figure is lifted along an arc while the clip travels: it hops back instead of
+        // sliding. As the clip hands back to idle the root takes up the distance the pose gives back
+        // (`weight` is the dodge's share of the pose this frame was drawn with), and once it is idle the
+        // figure hops forward home. Returns the lift.
+        float Carry(float dt, float weight, bool playing, float progress)
+        {
+            if (dodging && playing) return 0.16f * Mathf.Sin(Mathf.PI * Mathf.Clamp01((progress - 0.12f) / 0.72f));
+            if (dodging)
+            {
+                carry = dodgeAway * (1f - weight);
+                if (weight < 0.02f) { dodging = false; carryFrom = dodgeAway; homeT = 0f; }
+                return 0f;
+            }
+            if (homeT < 0f) return 0f;
+            homeT += dt / 0.3f;
+            float k = Mathf.Clamp01(homeT);
+            carry = Vector3.Lerp(carryFrom, Vector3.zero, Ease.InOutSine(k));
+            if (homeT >= 1f) { homeT = -1f; carry = Vector3.zero; }
+            return 0.12f * Mathf.Sin(Mathf.PI * k);
         }
 
         // Dust each time the step count passes a whole step (two per gait cycle).
@@ -229,14 +286,29 @@ namespace LLTacticalWar
             transform.localRotation = Quaternion.Euler(0f, yawLag, 0f);
         }
 
-        void Punches(float dt)
+        void Punches(float dt, float lift)
         {
+            float pop = 1f, hop = 0f, squash = 0f;
             if (punchT >= 0f)
             {
                 punchT += dt / 0.15f;
-                transform.localScale = baseScale * (1f + Mathf.Sin(Mathf.Clamp01(punchT) * Mathf.PI) * 0.18f);
-                if (punchT >= 1f) { punchT = -1f; transform.localScale = baseScale; }
+                pop = 1f + Mathf.Sin(Mathf.Clamp01(punchT) * Mathf.PI) * 0.18f;
+                if (punchT >= 1f) punchT = -1f;
             }
+            if (landT >= 0f)
+            {
+                landT += dt / 0.32f;
+                float k = Mathf.Clamp01(landT);
+                if (k < 0.42f) hop = Mathf.Sin(k / 0.42f * Mathf.PI) * 0.14f;
+                else
+                {
+                    squash = Mathf.Sin((k - 0.42f) / 0.58f * Mathf.PI) * 0.1f;
+                    if (!puffed) { puffed = true; Fx.I?.LandPuff(transform.position); }
+                }
+                if (landT >= 1f) landT = -1f;
+            }
+            if (!dead) transform.localScale = Vector3.Scale(baseScale * pop, new Vector3(1f + squash * 0.5f, 1f - squash, 1f + squash * 0.5f));
+            transform.localPosition = carry + Vector3.up * (hop + lift);
             if (flashT >= 0f)
             {
                 flashT += dt / 0.12f;
@@ -287,6 +359,10 @@ namespace LLTacticalWar
             {
                 if (graph.IsValid()) graph.Destroy();
             }
+
+            public float Weight(Slot s) => weights[(int)s];
+            public bool Playing(Slot s) => oneShot == (int)s;
+            public float Progress(Slot s) => slots[(int)s].IsValid() ? (float)(slots[(int)s].GetTime() / slots[(int)s].GetAnimationClip().length) : 0f;
 
             public void Play(Slot s, float speed, bool hold = false)
             {

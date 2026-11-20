@@ -59,9 +59,9 @@ namespace LLTacticalWar
             cam.transform.SetParent(root, false);
             cam.Lens.FarClipPlane = 400f;
             cam.Priority = 0;
-            // shallow depth of field on the pair: both actors sharp, the backdrop soft
+            // shallow depth of field on the pair: both actors sharp, the backdrop softened but still read
             focus = Prim.Pivot("Focus", root, Vector3.up);
-            GameManager.Lens(cam, 135f, 2.2f, CinemachineVolumeSettings.FocusTrackingMode.CustomTarget, focus);
+            GameManager.Lens(cam, 135f, 5f, CinemachineVolumeSettings.FocusTrackingMode.CustomTarget, focus);
             arrow = BuildArrow();
             bolt = BuildBolt();
             PoseCamera(0f);
@@ -125,11 +125,12 @@ namespace LLTacticalWar
 
         void Shake(float amount) => trauma = Mathf.Min(1f, trauma + amount);
 
+        // Every camera move eases in and out: the crit push-in, its return, the settle at the result.
         IEnumerator CameraTo(Vector3 pos, Vector3 look, float fov, float seconds)
         {
             Vector3 p0 = camPos, l0 = camLook;
             float f0 = camFov;
-            yield return Ease.Tween(seconds, k => { camPos = Vector3.Lerp(p0, pos, k); camLook = Vector3.Lerp(l0, look, k); camFov = Mathf.Lerp(f0, fov, k); }, Ease.OutCubic);
+            yield return Ease.Tween(seconds, k => { camPos = Vector3.Lerp(p0, pos, k); camLook = Vector3.Lerp(l0, look, k); camFov = Mathf.Lerp(f0, fov, k); }, Ease.InOutCubic);
         }
 
         // Skip-aware waits on scaled time: once X is pressed they all finish at once.
@@ -202,7 +203,7 @@ namespace LLTacticalWar
             CurrentPhase = Phase.Result;
             StopAllCoroutines();   // reactions and camera moves still settling
             slowMo = hitStop = 1f;
-            camPos = CamHome; camLook = CamLook; camFov = CamFov;
+            StartCoroutine(CameraTo(CamHome, CamLook, CamFov, 0.35f));   // from wherever a push-in left it
             arrow.gameObject.SetActive(false);
             bolt.gameObject.SetActive(false);
             Settle(att, def, strikes);
@@ -372,7 +373,7 @@ namespace LLTacticalWar
             {
                 Fx.I?.CritSparks(at, tc);
                 GameUI.I.Flash(Palette.Gold);
-                GameUI.I.FloatText(target.Head + Vector3.up * 0.45f, "CRITICAL", Palette.Gold, 2.1f, 0.3f, 2.2f);
+                GameUI.I.FloatText(target.Head + Vector3.up * 0.1f, "CRITICAL", Palette.Gold, 2.1f, 0.25f, 2.2f);   // under the push-in's top edge
                 AudioBank.I.Play(Sfx.Hit, 1f, 0f, 0f);
                 AudioBank.I.Play(Sfx.Flank, 0.5f, 0f, 0f);
             }

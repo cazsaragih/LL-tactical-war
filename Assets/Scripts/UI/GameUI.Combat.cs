@@ -4,61 +4,65 @@ using UnityEngine.UI;
 
 namespace LLTacticalWar
 {
-    // The combat forecast panel (map, Target state).
+    // The combat forecast (map, Target state) and the battle HUD: parchment cards with each side's
+    // wax seal, names in the display face, the numbers that decide the exchange large and tabular.
     public partial class GameUI
     {
-        class ForecastColumn { public TextMeshProUGUI name, weapon, hp, dmg, hit, crit; public Image brk; }
+        class ForecastColumn { public TextMeshProUGUI name, weapon, hp, dmg, hit, crit; public StampMark brk; public Image seal; public string probe; }
 
-        RectTransform forecastPanel;
+        Card forecastCard;
         ForecastColumn fcLeft, fcRight;
 
         // What the forecast panel shows right now, read by the verify probe.
         public string ForecastText { get; private set; } = "";
 
-        static readonly string[] ForecastLabels = { "HP", "DMG", "HIT", "CRIT" };
-        const float FcWidth = 500f, FcCol = 200f, FcPad = 16f;
+        static readonly string[] ForecastLabels = { "HP", "Dmg", "Hit", "Crit" };
+        const float FcWidth = 580f, FcCol = 196f, FcPad = 30f, FcRow = 44f;
 
         void BuildForecast()
         {
-            var panel = Panel(tacticGroup.transform, "Forecast", Vector2.zero, Vector2.zero, new Vector2(24, 24), new Vector2(FcWidth, 308), Palette.WithAlpha(Palette.Panel, 0.95f));
-            forecastPanel = panel.rectTransform;
-            var title = Text(panel.transform, "FORECAST", 15, Palette.Gold, TextAlignmentOptions.Center);
-            TopLeft(title.rectTransform, new Vector2(0, -10), new Vector2(FcWidth, 20));
+            forecastCard = MakeCard(tacticGroup.transform, "Forecast", Vector2.zero, Vector2.zero, new Vector2(24f, 24f), new Vector2(FcWidth, 352f));
+            var c = forecastCard.rt;
+            var title = Text(c, "Forecast", 22, Palette.InkFaded, TextAlignmentOptions.Center, Face.Display);
+            title.characterSpacing = 10f;
+            Place(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -30f), new Vector2(240f, 30f));
+            Rule(c, new Vector2(0.5f, 1f), new Vector2(-150f, -32f), 110f, 0.4f);
+            Rule(c, new Vector2(0.5f, 1f), new Vector2(150f, -32f), 110f, 0.4f);
+            float mid = FcPad + FcCol, midW = FcWidth - 2f * (FcPad + FcCol);
             for (int i = 0; i < ForecastLabels.Length; i++)
             {
-                var l = Text(panel.transform, ForecastLabels[i], 17, Palette.Muted, TextAlignmentOptions.Center);
-                TopLeft(l.rectTransform, new Vector2(FcPad + FcCol, -126 - i * 36), new Vector2(FcWidth - 2 * (FcPad + FcCol), 30));
+                var l = Text(c, ForecastLabels[i], 20, Palette.InkFaded, TextAlignmentOptions.Center, Face.Display);
+                l.characterSpacing = 6f;
+                TopLeft(l.rectTransform, new Vector2(mid, -142f - i * FcRow), new Vector2(midW, 30f));
+                if (i > 0) Rule(c, new Vector2(0.5f, 1f), new Vector2(0f, -134f - i * FcRow), FcWidth - 70f, 0.16f);
             }
-            fcLeft = Column(panel.transform, FcPad, TextAlignmentOptions.Right, Palette.Azure);
-            fcRight = Column(panel.transform, FcWidth - FcPad - FcCol, TextAlignmentOptions.Left, Palette.Crimson);
-            forecastPanel.gameObject.SetActive(false);
+            fcLeft = Column(c, FcPad, true);
+            fcRight = Column(c, FcWidth - FcPad - FcCol, false);
+            forecastCard.rt.gameObject.SetActive(false);
         }
 
-        ForecastColumn Column(Transform parent, float x, TextAlignmentOptions align, Color team)
+        ForecastColumn Column(RectTransform parent, float x, bool left)
         {
-            var c = new ForecastColumn();
-            Panel(parent, "Strip", new Vector2(0, 1), new Vector2(0, 1), new Vector2(x, -36), new Vector2(FcCol, 6), team);
-            c.name = Text(parent, "", 24, Palette.Parchment, align);
-            TopLeft(c.name.rectTransform, new Vector2(x, -48), new Vector2(FcCol, 30));
-            c.name.enableAutoSizing = true;
-            c.name.fontSizeMin = 16f;
-            c.name.fontSizeMax = 24f;
-            c.weapon = Text(parent, "", 16, Palette.Parchment, align);
-            TopLeft(c.weapon.rectTransform, new Vector2(x, -84), new Vector2(FcCol, 24));
-            c.weapon.richText = true;
+            var col = new ForecastColumn();
+            var align = left ? TextAlignmentOptions.Right : TextAlignmentOptions.Left;
+            col.seal = SealAt(parent, left ? Team.Player : Team.Enemy, new Vector2(left ? 0f : 1f, 1f), new Vector2(left ? 20f : -20f, -18f), 84f, left ? -8f : 8f);
+            col.name = Text(parent, "", 26, Palette.AzureDark, align, Face.Display);
+            TopLeft(col.name.rectTransform, new Vector2(x, -60f), new Vector2(FcCol, 32f));
+            col.name.enableAutoSizing = true;
+            col.name.fontSizeMin = 17f;
+            col.name.fontSizeMax = 26f;
+            col.weapon = Text(parent, "", 17, Palette.InkFaded, align);
+            TopLeft(col.weapon.rectTransform, new Vector2(x, -94f), new Vector2(FcCol, 24f));
             var rows = new TextMeshProUGUI[4];
             for (int i = 0; i < rows.Length; i++)
             {
-                rows[i] = Text(parent, "", 26, Palette.Parchment, align);
-                TopLeft(rows[i].rectTransform, new Vector2(x, -122 - i * 36), new Vector2(FcCol, 34));
-                rows[i].richText = true;
+                rows[i] = Text(parent, "", 34, Palette.Ink, align);
+                TopLeft(rows[i].rectTransform, new Vector2(x, -134f - i * FcRow), new Vector2(FcCol, 42f));
             }
-            c.hp = rows[0]; c.dmg = rows[1]; c.hit = rows[2]; c.crit = rows[3];
-            bool left = align == TextAlignmentOptions.Right;
-            c.brk = Panel(parent, "Break", new Vector2(0, 1), new Vector2(left ? 1 : 0, 1), new Vector2(left ? x + FcCol : x, -270), new Vector2(104, 26), Palette.Gold);
-            var t = Text(c.brk.transform, "BREAK", 15, Palette.Ink, TextAlignmentOptions.Center, chipMat);
-            Fill(t.rectTransform);
-            return c;
+            col.hp = rows[0]; col.dmg = rows[1]; col.hit = rows[2]; col.crit = rows[3];
+            col.brk = MakeStamp(parent, new Vector2(0f, 1f), new Vector2(x + FcCol * 0.5f, -322f), new Vector2(128f, 40f), left ? -5f : 5f);
+            SetStamp(col.brk, "Break", Palette.CrimsonDark);
+            return col;
         }
 
         // Player on the left, enemy on the right, whoever attacks.
@@ -70,57 +74,62 @@ namespace LLTacticalWar
             var right = playerAttacks ? f.defender : f.attacker;
             FillColumn(fcLeft, left, playerAttacks ? hp.attacker : hp.defender, right);
             FillColumn(fcRight, right, playerAttacks ? hp.defender : hp.attacker, left);
-            forecastPanel.gameObject.SetActive(true);
-            ForecastText = ColumnText(fcLeft) + "  ||  " + ColumnText(fcRight);
+            if (!forecastCard.rt.gameObject.activeSelf) SlideIn(forecastCard, -70f, 0.18f);
+            ForecastText = fcLeft.probe + "  ||  " + fcRight.probe;
         }
 
-        public void HideForecast() { forecastPanel.gameObject.SetActive(false); ForecastText = ""; }
+        public void HideForecast() { Hide(forecastCard); ForecastText = ""; }
 
         void FillColumn(ForecastColumn c, SideForecast s, int hpAfter, SideForecast foe)
         {
-            c.name.text = s.unit.DisplayName.ToUpper();
-            c.name.color = Palette.TeamLight(s.unit.team);
+            c.name.text = s.unit.DisplayName;
+            c.name.color = Palette.TeamDark(s.unit.team);
+            c.seal.sprite = UiKit.Seal(s.unit.team);
             int tri = Weapons.Triangle(s.weapon.Kind, foe.weapon.Kind);
-            string mark = tri > 0 ? "<color=#" + Hex(Palette.Gold) + ">▲</color>" : tri < 0 ? "<color=#" + Hex(Palette.CrimsonLight) + ">▼</color>" : "";
+            string mark = tri > 0 ? Tint("▲", Palette.Brass) : tri < 0 ? Tint("▼", Palette.Crimson) : "";
             bool left = c == fcLeft;
-            c.weapon.text = mark.Length == 0 ? s.weapon.Name.ToUpper() : left ? s.weapon.Name.ToUpper() + "  " + mark : mark + "  " + s.weapon.Name.ToUpper();
-            string after = hpAfter < s.unit.currentHealth ? "<color=#" + Hex(Palette.CrimsonLight) + ">" + hpAfter + "</color>" : hpAfter.ToString();
+            string weapon = s.weapon.Name.ToUpper();
+            c.weapon.text = mark.Length == 0 ? weapon : left ? weapon + "  " + mark : mark + "  " + weapon;
+            string after = hpAfter < s.unit.currentHealth ? Tint(hpAfter.ToString(), Palette.Crimson) : hpAfter.ToString();
             c.hp.text = s.unit.currentHealth + " → " + after;
             bool strikes = s.canCounter;
-            c.dmg.text = strikes ? s.damage + (s.strikes > 1 ? " <color=#" + Hex(Palette.Gold) + ">x2</color>" : "") : "--";
+            c.dmg.text = strikes ? s.damage + (s.strikes > 1 ? " " + Tint("x2", Palette.Brass) : "") : "--";
             c.hit.text = strikes ? s.hit.ToString() : "--";
             c.crit.text = strikes ? s.crit.ToString() : "--";
-            c.brk.gameObject.SetActive(strikes && s.triangleAdvantage && !foe.unit.broken);
+            bool brk = strikes && s.triangleAdvantage && !foe.unit.broken;
+            c.brk.rt.gameObject.SetActive(brk);
+            c.probe = s.unit.DisplayName.ToUpper() + " | " + c.weapon.text + " | HP " + c.hp.text + " | DMG " + c.dmg.text + " | HIT " + c.hit.text + " | CRIT " + c.crit.text + (brk ? " | BREAK" : "");
         }
-
-        static string ColumnText(ForecastColumn c) =>
-            c.name.text + " | " + c.weapon.text + " | HP " + c.hp.text + " | DMG " + c.dmg.text + " | HIT " + c.hit.text + " | CRIT " + c.crit.text + (c.brk.gameObject.activeSelf ? " | BREAK" : "");
-
-        static string Hex(Color c) => ColorUtility.ToHtmlStringRGB(c);
 
         // ---------------- battle HUD ----------------
 
-        // One side's panel. The bar drains fast; a pale ghost segment holds, then catches up.
+        // One side's card. The bar drains fast; a pale ghost segment holds, then catches up.
         class BattleSide
         {
+            public Card card;
             public TextMeshProUGUI name, weapon, hp, stats;
-            public Image fill, ghost, broken;
+            public Bar bar;
+            public StampMark broken;
+            public Image seal;
+            public string probeName = "";
             public float target, shown, ghostShown, ghostHold;
             public int max = 1;
         }
 
         CanvasGroup battleGroup;
         BattleSide bsLeft, bsRight;
+        Card battleHintSlip;
         TextMeshProUGUI battleHint;
+        const float BsWidth = 640f, BsHeight = 182f;
 
         void BuildBattleHud()
         {
             battleGroup = Group("BattleHUD");
             bsLeft = BattleSidePanel(true);
             bsRight = BattleSidePanel(false);
-            battleHint = Text(battleGroup.transform, "", 18, Palette.WithAlpha(Palette.Parchment, 0.8f), TextAlignmentOptions.Center);
-            Place(battleHint.rectTransform, new Vector2(0.5f, 0f), new Vector2(0, 46), new Vector2(520, 30));
-            battleHint.richText = true;
+            battleHintSlip = MakeCard(battleGroup.transform, "BattleHint", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 26f), new Vector2(400f, 42f), false, 1.4f);
+            battleHint = Text(battleHintSlip.rt, "", 18, Palette.Ink, TextAlignmentOptions.Center);
+            Fill(battleHint.rectTransform, 10f, 10f, 0f, 0f);
             Show(battleGroup, false);
         }
 
@@ -128,41 +137,34 @@ namespace LLTacticalWar
         {
             var b = new BattleSide();
             var anchor = new Vector2(left ? 0f : 1f, 0f);
-            var p = Panel(battleGroup.transform, left ? "BattleLeft" : "BattleRight", anchor, anchor, new Vector2(left ? 24 : -24, 24), new Vector2(620, 172), Palette.WithAlpha(Palette.Panel, 0.94f));
-            Panel(p.transform, "Stripe", new Vector2(0, 1), new Vector2(0, 1), new Vector2(0, 0), new Vector2(620, 8), left ? Palette.Azure : Palette.Crimson);
-            b.name = Text(p.transform, "", 30, left ? Palette.AzureLight : Palette.CrimsonLight, TextAlignmentOptions.Left);
-            TopLeft(b.name.rectTransform, new Vector2(24, -18), new Vector2(400, 36));
-            b.weapon = Text(p.transform, "", 17, Palette.Parchment, TextAlignmentOptions.Left);
-            TopLeft(b.weapon.rectTransform, new Vector2(26, -56), new Vector2(400, 24));
-            b.hp = Text(p.transform, "", 56, Palette.Parchment, TextAlignmentOptions.Right, titleMat);
-            TopLeft(b.hp.rectTransform, new Vector2(420, -10), new Vector2(176, 66));
-
-            var bg = Panel(p.transform, "HpBar", new Vector2(0, 1), new Vector2(0, 1), new Vector2(24, -88), new Vector2(572, 26), Palette.WithAlpha(Palette.Ink, 0.95f));
-            b.ghost = FillImage(bg.transform, Palette.Parchment);
-            b.fill = FillImage(bg.transform, left ? Palette.Azure : Palette.Crimson);
-
-            b.stats = Text(p.transform, "", 20, Palette.Parchment, TextAlignmentOptions.Left);
-            TopLeft(b.stats.rectTransform, new Vector2(26, -128), new Vector2(560, 28));
-            b.stats.richText = true;
-
-            b.broken = Panel(p.transform, "Broken", new Vector2(0, 1), new Vector2(0, 1), new Vector2(250, -54), new Vector2(110, 26), Palette.Gold);
-            var bt = Text(b.broken.transform, "BROKEN", 15, Palette.Ink, TextAlignmentOptions.Center, chipMat);
-            Fill(bt.rectTransform);
+            b.card = MakeCard(battleGroup.transform, left ? "BattleLeft" : "BattleRight", anchor, anchor, new Vector2(left ? 24f : -24f, 24f), new Vector2(BsWidth, BsHeight));
+            var p = b.card.rt;
+            // positions are written for the left card and mirrored for the right
+            Vector2 At(float x, float y, float w) => new Vector2(left ? x : BsWidth - x - w, y);
+            var near = left ? TextAlignmentOptions.Left : TextAlignmentOptions.Right;
+            var far = left ? TextAlignmentOptions.Right : TextAlignmentOptions.Left;
+            var team = left ? Team.Player : Team.Enemy;
+            b.seal = SealAt(p, team, new Vector2(left ? 0f : 1f, 1f), new Vector2(left ? 18f : -18f, -14f), 92f, left ? -8f : 8f);
+            b.name = Text(p, "", 32, Palette.TeamDark(team), near, Face.Display);
+            b.name.characterSpacing = 5f;
+            TopLeft(b.name.rectTransform, At(78f, -16f, 340f), new Vector2(340f, 40f));
+            b.weapon = Text(p, "", 17, Palette.InkFaded, near);
+            TopLeft(b.weapon.rectTransform, At(80f, -58f, 300f), new Vector2(300f, 24f));
+            b.hp = Text(p, "", 68, Palette.Ink, far);
+            TopLeft(b.hp.rectTransform, At(440f, -6f, 170f), new Vector2(170f, 76f));
+            b.bar = MakeBar(p, At(30f, -98f, 580f), new Vector2(580f, 26f), Palette.Team(team), true);
+            if (!left)
+            {
+                // the enemy's bar drains toward its own seal
+                b.bar.fill.fillOrigin = 1;
+                b.bar.ghost.fillOrigin = 1;
+            }
+            b.stats = Text(p, "", 21, Palette.Ink, near);
+            TopLeft(b.stats.rectTransform, At(32f, -138f, 580f), new Vector2(580f, 30f));
+            // stamped in the card's lower far corner, clear of the name, the number and the stat line
+            b.broken = MakeStamp(p, new Vector2(0f, 1f), new Vector2(left ? 536f : BsWidth - 536f, -150f), new Vector2(124f, 40f), left ? -6f : 6f);
+            SetStamp(b.broken, "Broken", Palette.CrimsonDark);
             return b;
-        }
-
-        Image FillImage(Transform parent, Color c)
-        {
-            var rt = Rect(parent, "Fill", Vector2.zero, new Vector2(0, 0.5f), Vector2.zero, Vector2.zero);
-            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-            rt.offsetMin = new Vector2(3, 3); rt.offsetMax = new Vector2(-3, -3);
-            var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = whiteSprite;          // Filled needs a sprite, or it silently does nothing
-            img.type = Image.Type.Filled;
-            img.fillMethod = Image.FillMethod.Horizontal;
-            img.color = c;
-            img.raycastTarget = false;
-            return img;
         }
 
         // Player on the left, enemy on the right.
@@ -173,6 +175,8 @@ namespace LLTacticalWar
             SetSide(bsRight, playerAttacks ? f.defender : f.attacker);
             SetBattleHint(false);
             Show(battleGroup, true);
+            SlideIn(bsLeft.card, -90f, 0.22f);
+            SlideIn(bsRight.card, 90f, 0.22f);
         }
 
         public void HideBattleHud() { Show(battleGroup, false); }
@@ -180,16 +184,17 @@ namespace LLTacticalWar
         void SetSide(BattleSide b, SideForecast s)
         {
             var u = s.unit;
-            b.name.text = u.DisplayName.ToUpper();
+            b.probeName = u.DisplayName.ToUpper();
+            b.name.text = u.DisplayName;
             b.weapon.text = s.weapon.Name.ToUpper();
             b.max = Mathf.Max(1, u.MaxHP);
             b.target = b.shown = b.ghostShown = u.currentHealth;
             b.ghostHold = 0f;
-            string muted = "<color=#" + Hex(Palette.Muted) + ">";
+            string L(string label) => Tint(label, Palette.InkFaded);
             b.stats.text = s.canCounter
-                ? muted + "HIT</color> " + s.hit + "     " + muted + "DMG</color> " + s.damage + (s.strikes > 1 ? " x2" : "") + "     " + muted + "CRIT</color> " + s.crit
-                : muted + "HIT</color> --     " + muted + "DMG</color> --     " + muted + "CRIT</color> --";
-            b.broken.gameObject.SetActive(u.broken);
+                ? L("HIT") + " " + s.hit + "      " + L("DMG") + " " + s.damage + (s.strikes > 1 ? " " + Tint("x2", Palette.Brass) : "") + "      " + L("CRIT") + " " + s.crit
+                : L("HIT") + " --      " + L("DMG") + " --      " + L("CRIT") + " --";
+            b.broken.rt.gameObject.SetActive(u.broken);
             ApplySide(b);
         }
 
@@ -200,16 +205,16 @@ namespace LLTacticalWar
             b.target = hp;
         }
 
-        public void SetBattleBroken(bool left) { (left ? bsLeft : bsRight).broken.gameObject.SetActive(true); }
-
-        public void SetBattleHint(bool fast)
+        public void SetBattleBroken(bool left)
         {
-            string gold = "<color=#" + Hex(Palette.Gold) + ">";
-            battleHint.text = fast ? gold + "x2</color>     X  skip" : "HOLD Z  x2     X  skip";
+            var b = left ? bsLeft : bsRight;
+            if (!b.broken.rt.gameObject.activeSelf) Slam(b.broken.rt);
         }
 
+        public void SetBattleHint(bool fast) => battleHint.text = HintMarkup(fast ? "Z held  x2     X  skip" : "HOLD Z  x2     X  skip");
+
         // Shown HP on each panel, for the verify probe.
-        public string BattleHudText => bsLeft.name.text + " " + bsLeft.hp.text + "  ||  " + bsRight.name.text + " " + bsRight.hp.text;
+        public string BattleHudText => bsLeft.probeName + " " + bsLeft.hp.text + "  ||  " + bsRight.probeName + " " + bsRight.hp.text;
 
         void UpdateBattleHud(float dt)
         {
@@ -228,10 +233,10 @@ namespace LLTacticalWar
 
         static void ApplySide(BattleSide b)
         {
-            b.fill.fillAmount = b.shown / b.max;
-            b.ghost.fillAmount = Mathf.Max(b.ghostShown, b.shown) / b.max;
+            b.bar.fill.fillAmount = b.shown / b.max;
+            b.bar.ghost.fillAmount = Mathf.Max(b.ghostShown, b.shown) / b.max;
             b.hp.text = Mathf.CeilToInt(b.shown).ToString();
-            b.hp.color = b.shown <= b.max * 0.25f ? Palette.CrimsonLight : Palette.Parchment;
+            b.hp.color = b.shown <= b.max * 0.25f ? Palette.Crimson : Palette.Ink;
         }
     }
 }

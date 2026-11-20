@@ -4,7 +4,7 @@ On their turn the player selects one of their units, sees where it can walk (blu
 
 ## Sub-features
 
-- `pick` hovers a unit to show its card (HP bar, weapon, stat line, BROKEN or DONE chip) and its reach. Z on a ready player unit selects it.
+- `pick` hovers a unit to show its card (HP bar, weapon, stat line, a Broken or Done stamp) and its reach. Z on a ready player unit selects it.
 - `move-preview` shows the blue move range, the red fringe of tiles it could attack after moving, and the gold path to the cursor.
 - `move-back` returns to Pick with X before moving.
 - `move-commit` walks the unit along the path and opens the menu: `Attack` / `Wait`. Choosing its own tile opens the menu without walking.

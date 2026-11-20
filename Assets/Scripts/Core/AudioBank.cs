@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace LLTacticalWar
 {
-    public enum Sfx { UiMove, UiConfirm, UiCancel, Step, Hit, Death, Arrow, Skill, Horn, Victory, Defeat, Turn, Flank }
+    public enum Sfx { UiMove, UiConfirm, UiCancel, Step, Hit, Death, Arrow, Skill, Horn, Victory, Defeat, Flank, Stamp }
 
     // Every clip is synthesized at startup: no audio assets. Volumes run through a static gain
     // layer (Music / Sfx) because an AudioMixer can't be authored headlessly; the settings
@@ -92,10 +92,10 @@ namespace LLTacticalWar
             clips[Sfx.Death]     = Make("death", 0.28f, (t, i) => Square(Mathf.Lerp(300f, 80f, t / 0.28f), t) * 0.25f * Env(t, 0.28f, 0.005f, 0.2f));
             clips[Sfx.Arrow]     = MakeFiltered("arrow", 0.16f, 0.25f, (t, i) => Noise() * 0.5f * Env(t, 0.16f, 0.03f, 0.12f));
             clips[Sfx.Skill]     = Make("skill", 0.4f, (t, i) => (Sine(Mathf.Lerp(200f, 1200f, t / 0.4f), t) * 0.4f + Noise() * 0.18f) * Env(t, 0.4f, 0.01f, 0.25f));
-            clips[Sfx.Horn]      = Make("horn", 1.1f, (t, i) => Saw(t < 0.45f ? 220f : 330f, t) * 0.22f * Env(t, 1.1f, 0.05f, 0.4f));
+            clips[Sfx.Horn]      = MakeFiltered("horn", 1.1f, 0.35f, (t, i) => HornNote(t, 233.08f, 0f, 0.46f) + HornNote(t, 349.23f, 0.4f, 0.68f));
             clips[Sfx.Victory]   = Make("victory", 0.6f, (t, i) => Triad(t, 523.25f, 659.25f, 783.99f, 0.12f) * 0.45f);
             clips[Sfx.Defeat]    = Make("defeat", 0.75f, (t, i) => Triad(t, 392f, 311.13f, 261.63f, 0.18f) * 0.45f);
-            clips[Sfx.Turn]      = Make("turn", 0.35f, (t, i) => (Sine(587.33f, t) * Env(t, 0.18f, 0.005f, 0.15f) + Sine(880f, t - 0.1f) * Env(t - 0.1f, 0.25f, 0.005f, 0.2f)) * 0.4f);
+            clips[Sfx.Stamp]     = MakeFiltered("stamp", 0.12f, 0.5f, (t, i) => (Sine(Mathf.Lerp(120f, 60f, t / 0.12f), t) * 0.8f + Noise() * 0.5f * Mathf.Exp(-t * 70f)) * Env(t, 0.12f, 0.002f, 0.09f));
             clips[Sfx.Flank]     = Make("flank", 0.3f, (t, i) => (Square(740f, t) * 0.2f + Square(988f, t - 0.08f) * 0.2f * (t > 0.08f ? 1f : 0f)) * Env(t, 0.3f, 0.005f, 0.2f));
 
             ambientBed  = MakeLoop("ambient_wind", 6f, BrownNoise(6f, 0.025f));
@@ -117,6 +117,17 @@ namespace LLTacticalWar
             float a = Mathf.Clamp01(t / attack);
             float r = Mathf.Clamp01((len - t) / release);
             return Mathf.Min(a, r) * Mathf.Min(a, r);
+        }
+
+        // One call of a field horn: brassy harmonics swelling in, a slow vibrato.
+        static float HornNote(float t, float f, float start, float len)
+        {
+            float local = t - start;
+            if (local < 0f || local > len) return 0f;
+            float vib = 1f + 0.006f * Mathf.Sin(2f * Mathf.PI * 5.5f * local);
+            float v = 0f;
+            for (int h = 1; h <= 7; h++) v += Mathf.Sin(2f * Mathf.PI * f * h * vib * local) / Mathf.Pow(h, 1.25f);
+            return v * 0.16f * Env(local, len, 0.06f, 0.24f);
         }
 
         static float Triad(float t, float f1, float f2, float f3, float step)

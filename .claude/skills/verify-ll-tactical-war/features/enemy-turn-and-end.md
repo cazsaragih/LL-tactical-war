@@ -6,7 +6,7 @@ Once every player unit is done, the enemy takes its turn behind an "ENEMY TURN" 
 
 - `end-player-turn` hands over to the enemy after the last unit's Wait or attack.
 - `enemy-bot` moves each enemy and attacks when it can, through the forecast and the battle scene.
-- `danger-zone` toggles a striped red overlay on the player turn (Shift or C). It covers every tile any enemy could attack next turn, given where units stand.
+- `danger-zone` toggles a cross-hatched crimson wash, inked round its outer edge, on the player turn (Shift or C). It covers every tile any enemy could attack next turn, given where units stand.
 - `next-round` returns to YOUR TURN with the round incremented, all player units ready, and their BROKEN cleared.
 - `end-screen` shows VICTORY or DEFEAT with ROUNDS, BATTLES, ENEMIES DEFEATED and UNITS LOST, and Play Again / Quit Game.
 
@@ -22,7 +22,7 @@ Preconditions:
 
 - Baseline after `title-start`.
 
-- **Danger zone.** `$S press danger`, then `$S state`. You should see `danger: on  tiles N  players in reach: ...` and a capture shows striped red tiles around the enemy line. `$S press danger` again turns it off.
+- **Danger zone.** `$S press danger`, then `$S state`. You should see `danger: on  tiles N  players in reach: ...` and a capture shows the cross-hatched crimson zone around the enemy line. `$S press danger` again turns it off.
 - **End turn.** For each ready unit: `$S press confirm` (select), `$S press confirm` (stay), `$S press confirm` (Wait is preselected when Attack is off). Check `state` between units, because the cursor moves itself. After the last one, `state` shows `turn: EnemyTurn`.
 - **Enemy acts.** Start a burst right away: `$S burst enemy 12 1`, plus `$S state` in parallel a few times. Enemy tiles change. An attack shows `battle: Intro` or `Strikes` with the enemy as attacker, and the captures show its forecast on the map and then the battle scene.
 - **Danger check.** Every player unit an enemy attacked must have been listed in `players in reach:` at the end of your turn.
