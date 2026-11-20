@@ -38,6 +38,10 @@ namespace LLTacticalWar
 
         public bool IsTop => GameUI.I != null && GameUI.I.TopMenu == this;
 
+        // Where the mouse was when the menu opened: a row that appears under a resting pointer
+        // must not take the keyboard's default (HoverSelect).
+        public Vector2 OpenedMouse { get; private set; }
+
         public static MenuView Create(Transform parent, string name, float width, bool framed)
         {
             var rt = GameUI.Rect(parent, name, new Vector2(0.5f, 0.5f), new Vector2(0f, 1f), Vector2.zero, new Vector2(width, 100f));
@@ -104,6 +108,7 @@ namespace LLTacticalWar
             gameObject.SetActive(true);
             GameUI.I.PushMenu(this);
             shownAt = Time.unscaledTime;
+            OpenedMouse = UnityEngine.InputSystem.Mouse.current != null ? UnityEngine.InputSystem.Mouse.current.position.ReadValue() : Vector2.zero;
             lastSelected = -1;
             Refresh();
         }

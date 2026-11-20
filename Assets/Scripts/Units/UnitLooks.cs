@@ -107,8 +107,9 @@ namespace LLTacticalWar
             ["Archer"] = new UnitLook
             {
                 Model = "RogueHooded", Atlas = Rogue,
-                // the 2-handed crossbow juts sideways in the idle pose; the 1-handed one hangs at the hip
-                Props = new[] { new Prop("crossbow_1handed", "handslot.r", new Vector3(0.10f, -0.01f, 0f)), new Prop("quiver", "chest", new Vector3(0.2f, 0.3f, -0.38f), new Vector3(-12f, 0f, -24f)) },
+                // the Weapons pack's crossbow lies along +Z; the rig's own 1H_Crossbow, which the shoot
+                // clip is posed for, lies along -X from the same grip, so turn it -90 about Y
+                Props = new[] { new Prop("crossbow_1handed", "handslot.r", new Vector3(0.105f, -0.01f, 0f), new Vector3(0f, -90f, 0f)),new Prop("quiver", "chest", new Vector3(0.2f, 0.3f, -0.38f), new Vector3(-12f, 0f, -24f)) },
                 Attack = "1H_Ranged_Shoot", Impact = 0.34f,
             },
             ["Dragoon"] = new UnitLook

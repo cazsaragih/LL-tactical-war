@@ -3,7 +3,8 @@ using UnityEngine.EventSystems;
 
 namespace LLTacticalWar
 {
-    // Mouse hover moves a KeyMenu's selection, so mouse and keyboard agree on what is selected.
+    // Mouse hover moves a KeyMenu's selection, so mouse and keyboard agree on what is selected,
+    // but only once the mouse has moved since the menu opened.
     public class HoverSelect : MonoBehaviour, IPointerEnterHandler, IPointerClickHandler
     {
         public MenuView view;
@@ -12,6 +13,7 @@ namespace LLTacticalWar
         public void OnPointerEnter(PointerEventData e)
         {
             if (view == null || view.menu == null || !view.IsTop) return;
+            if ((e.position - view.OpenedMouse).sqrMagnitude < 4f) return;
             if (view.menu.IsEnabled(index) && view.menu.selected != index)
             {
                 view.menu.selected = index;
