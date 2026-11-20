@@ -32,6 +32,7 @@ namespace LLTacticalWar
             public bool left, down;
             public int hp;
             public Vector3 Forward => left ? Vector3.right : Vector3.left;
+            public float Reach => unit.playerClass.Mounted ? 0.975f : 0.525f;   // body ahead of its root: a horse's head reaches past its rider
             public Vector3 Chest => t.position + Vector3.up * (0.9f + model.Lift);
             public Vector3 Head => t.position + Vector3.up * (2.0f + model.Lift);
         }
@@ -285,7 +286,7 @@ namespace LLTacticalWar
         {
             var dir = by.Forward;
             var back = by.home - dir * 0.3f;
-            var contact = target.home - dir * (by.unit.playerClass.Mounted ? 1.5f : 1.05f);
+            var contact = target.home - dir * (by.Reach + target.Reach);
             float blow = by.model.Swing(0.42f);
             yield return Tween(blow * 0.45f, k => by.t.localPosition = Vector3.Lerp(by.home, back, k), Ease.OutCubic);
             AudioBank.I.Play(Sfx.Step, 0.7f);

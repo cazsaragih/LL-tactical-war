@@ -1,11 +1,11 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace LLTacticalWar
 {
     // Builds every figure: the class's KayKit model from UnitLooks, its props on the rig's
-    // bones, one team-coloured material from TeamSkin, and a team banner on the back. The pack
-    // has no horse or lance, so the Dragoon's mount and lance stay code-built, in flat colours
-    // and chunky toy proportions that sit next to the KayKit figures.
+    // bones, one team-coloured material from TeamSkin, and a team banner on the back. A rider
+    // sits on its look's Mount instead, and carries a code-built lance (no pack prop is one).
     public static class UnitFactory
     {
         public static UnitModel Create(BaseClass cls, Team team, Transform parent)
@@ -14,9 +14,8 @@ namespace LLTacticalWar
             var root = new GameObject("Model");
             root.transform.SetParent(parent, false);
             var model = root.AddComponent<UnitModel>();
-            var seat = cls.Mounted ? BuildHorse(root.transform, team, model) : root.transform;
 
-            var body = Object.Instantiate(Resources.Load<GameObject>(UnitLooks.CharacterDir + look.Model), seat, false);
+            var body = Object.Instantiate(Resources.Load<GameObject>(UnitLooks.CharacterDir + look.Model), root.transform, false);
             body.name = look.Model;
             // the pack's own props hang off the hand slots; the look's props replace them
             foreach (var slot in new[] { "handslot.l", "handslot.r" })
@@ -33,10 +32,15 @@ namespace LLTacticalWar
             var skin = TeamSkin.For(look.Atlas, team);
             foreach (var r in body.GetComponentsInChildren<Renderer>()) r.sharedMaterial = skin;
 
-            // a rider's team blanket already flies its colours; a back banner would poke into its tag
-            if (cls.Mounted) BuildLance(Bone(body.transform, "handslot.r"), team);
+            // a rider's saddle cloth already flies its colours; a back banner would poke into its tag
+            Animator mount = null;
+            if (look.Mount != null)
+            {
+                mount = BuildMount(look.Mount, root.transform, body.transform, team);
+                BuildLance(Bone(body.transform, "handslot.r"), team);
+            }
             else BuildBanner(model, Bone(body.transform, "chest"), team);
-            model.Init(look, body.GetComponent<Animator>(), root.transform.InverseTransformPoint(seat.position).y);
+            model.Init(look, body.GetComponent<Animator>(), mount);
             return model;
         }
 
@@ -47,37 +51,56 @@ namespace LLTacticalWar
             return null;
         }
 
-        // A stubby toy horse in a team blanket, built to the KayKit figures' chibi proportions:
-        // round barrel, short thick legs, a big head. Returns the saddle, where the rider's root sits.
-        static Transform BuildHorse(Transform root, Team team, UnitModel m)
+        // The mount in its own colours on URP Lit, its saddle faces in the team's, and the rider's
+        // root on the seat bone. A fresh instance stands in its bind pose, where Seat and Cloth live.
+        static Animator BuildMount(Mount m, Transform root, Transform rider, Team team)
         {
-            Color coat = Palette.Horse, mane = Palette.HorseDark;
-            var horse = Prim.Pivot("Horse", root, Vector3.zero);
-            Prim.Part("Barrel", PrimitiveType.Capsule, horse, new Vector3(0, 0.68f, -0.02f), new Vector3(0.6f, 0.6f, 0.58f), coat, new Vector3(90f, 0, 0));
-            Prim.Part("Blanket", PrimitiveType.Capsule, horse, new Vector3(0, 0.72f, -0.06f), new Vector3(0.64f, 0.34f, 0.62f), Palette.Team(team), new Vector3(90f, 0, 0));
-            Prim.Part("Saddle", PrimitiveType.Cube, horse, new Vector3(0, 0.99f, -0.08f), new Vector3(0.4f, 0.09f, 0.42f), Palette.Walnut);
-            Prim.Part("Cantle", PrimitiveType.Cube, horse, new Vector3(0, 1.05f, -0.27f), new Vector3(0.32f, 0.1f, 0.06f), Palette.Walnut);
-            Prim.Part("Neck", PrimitiveType.Capsule, horse, new Vector3(0, 1.0f, 0.44f), new Vector3(0.34f, 0.3f, 0.34f), coat, new Vector3(28f, 0, 0));
-            Prim.Part("Head", PrimitiveType.Capsule, horse, new Vector3(0, 1.26f, 0.66f), new Vector3(0.36f, 0.3f, 0.36f), coat, new Vector3(72f, 0, 0));
-            Prim.Part("Muzzle", PrimitiveType.Sphere, horse, new Vector3(0, 1.18f, 0.9f), new Vector3(0.3f, 0.26f, 0.28f), Palette.Skin);
-            Prim.Part("EyeL", PrimitiveType.Sphere, horse, new Vector3(-0.16f, 1.34f, 0.7f), Vector3.one * 0.07f, Palette.Ink, default, false);
-            Prim.Part("EyeR", PrimitiveType.Sphere, horse, new Vector3(0.16f, 1.34f, 0.7f), Vector3.one * 0.07f, Palette.Ink, default, false);
-            Prim.Part("EarL", PrimitiveType.Capsule, horse, new Vector3(-0.1f, 1.5f, 0.56f), new Vector3(0.08f, 0.1f, 0.08f), coat, new Vector3(-10f, 0, 14f));
-            Prim.Part("EarR", PrimitiveType.Capsule, horse, new Vector3(0.1f, 1.5f, 0.56f), new Vector3(0.08f, 0.1f, 0.08f), coat, new Vector3(-10f, 0, -14f));
-            Prim.Part("Mane", PrimitiveType.Cube, horse, new Vector3(0, 1.18f, 0.4f), new Vector3(0.1f, 0.22f, 0.48f), mane, new Vector3(28f, 0, 0));
-            Prim.Part("Forelock", PrimitiveType.Cube, horse, new Vector3(0, 1.44f, 0.7f), new Vector3(0.12f, 0.08f, 0.14f), mane, new Vector3(-20f, 0, 0));
-            Prim.Part("Tail", PrimitiveType.Capsule, horse, new Vector3(0, 0.74f, -0.7f), new Vector3(0.14f, 0.24f, 0.14f), mane, new Vector3(-30f, 0, 0));
-            var legs = new Transform[4];
-            Vector3[] at = { new Vector3(-0.17f, 0.46f, 0.36f), new Vector3(0.17f, 0.46f, 0.36f), new Vector3(-0.17f, 0.46f, -0.38f), new Vector3(0.17f, 0.46f, -0.38f) };
-            for (int i = 0; i < 4; i++)
+            var mount = Object.Instantiate(Resources.Load<GameObject>(UnitLooks.MountDir + m.Model), root, false);
+            mount.name = m.Model;
+            foreach (var r in mount.GetComponentsInChildren<SkinnedMeshRenderer>())
             {
-                legs[i] = Prim.Pivot("HorseLeg" + i, horse, at[i]);
-                Prim.Part("Leg", PrimitiveType.Capsule, legs[i], new Vector3(0, -0.2f, 0), new Vector3(0.2f, 0.22f, 0.2f), coat);
-                Prim.Part("Hoof", PrimitiveType.Cylinder, legs[i], new Vector3(0, -0.4f, 0), new Vector3(0.22f, 0.045f, 0.22f), mane);
+                var own = r.sharedMaterials;
+                r.sharedMesh = WithCloth(r, mount.transform, m.Cloth);
+                var mats = new Material[own.Length + 1];
+                for (int i = 0; i < own.Length; i++) mats[i] = Palette.Lit(own[i].GetColor("_BaseColor"));
+                mats[own.Length] = Palette.Lit(Palette.Team(team));
+                r.sharedMaterials = mats;
             }
-            m.horse = horse;
-            m.horseLegs = legs;
-            return Prim.Pivot("Seat", horse, new Vector3(0, 0.77f, -0.08f));
+            rider.SetParent(mount.transform, false);
+            rider.localPosition = m.Seat;
+            rider.SetParent(Bone(mount.transform, m.SeatBone), true);
+            return mount.GetComponent<Animator>();
+        }
+
+        static readonly Dictionary<Mesh, Mesh> clothed = new Dictionary<Mesh, Mesh>();
+
+        // A copy of the mount's mesh with the faces centred inside the cloth box moved to one
+        // extra submesh. Skinned like the rest, the cloth bends with every gait and never clips.
+        static Mesh WithCloth(SkinnedMeshRenderer r, Transform mount, Bounds cloth)
+        {
+            var src = r.sharedMesh;
+            if (clothed.TryGetValue(src, out var mesh) && mesh != null) return mesh;
+            var toMount = mount.worldToLocalMatrix * r.transform.localToWorldMatrix;
+            var verts = src.vertices;
+            var cut = new List<int>();
+            mesh = Object.Instantiate(src);
+            mesh.name = src.name + "_Cloth";
+            mesh.subMeshCount = src.subMeshCount + 1;
+            for (int s = 0; s < src.subMeshCount; s++)
+            {
+                var tris = src.GetTriangles(s);
+                var kept = new List<int>(tris.Length);
+                for (int i = 0; i < tris.Length; i += 3)
+                {
+                    var centre = (verts[tris[i]] + verts[tris[i + 1]] + verts[tris[i + 2]]) / 3f;
+                    var into = cloth.Contains(toMount.MultiplyPoint3x4(centre)) ? cut : kept;
+                    into.Add(tris[i]); into.Add(tris[i + 1]); into.Add(tris[i + 2]);
+                }
+                mesh.SetTriangles(kept, s);
+            }
+            mesh.SetTriangles(cut, src.subMeshCount);
+            clothed[src] = mesh;
+            return mesh;
         }
 
         // Along the hand slot's +Y, the axis every KayKit weapon is modelled on.

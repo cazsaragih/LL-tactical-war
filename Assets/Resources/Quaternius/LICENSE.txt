@@ -1,0 +1,6 @@
+Horse.fbx: "Horse" from the Ultimate Animated Animal Pack by Quaternius
+(https://quaternius.com/packs/ultimateanimatedanimals.html), downloaded
+from Poly Pizza (https://poly.pizza/m/qvTrSG9pZF).
+
+License: Creative Commons Zero (CC0 1.0), public domain.
+http://creativecommons.org/publicdomain/zero/1.0/

@@ -36,8 +36,6 @@ namespace LLTacticalWar
         public static readonly Color Skin       = H("#E7C29A");
         public static readonly Color Steel      = H("#B8BEC6");
         public static readonly Color Wood       = H("#8B5A33");
-        public static readonly Color Horse      = H("#B97A55");   // warm tan from the KayKit atlases
-        public static readonly Color HorseDark  = H("#4A3428");
 
         // Shadow, accent, light
         public static readonly Color Ink        = H("#2B3340");

@@ -10,8 +10,10 @@ The 2015 repo held only `Scripts/`. Its scenes, prefabs, models, animators and N
 never committed, so the board, scenery and effects are built in code from basic shapes. The units
 are the [KayKit Adventurers](https://kaylousberg.com) pack by Kay Lousberg (CC0, licence in
 `Assets/Resources/KayKit/`), loaded from Resources and animated through Playables with no
-controller asset. The Dragoon's horse and lance are code-built because the pack has neither. The
-scene is `Assets/Scenes/Main.unity`, and one `GameManager` object boots the whole game.
+controller asset. The Dragoon rides the Horse from Quaternius's
+[Ultimate Animated Animals](https://quaternius.com/packs/ultimateanimatedanimals.html) (CC0,
+licence in `Assets/Resources/Quaternius/`), and its lance is code-built because no pack has one.
+The scene is `Assets/Scenes/Main.unity`, and one `GameManager` object boots the whole game.
 
 ## Controls
 
