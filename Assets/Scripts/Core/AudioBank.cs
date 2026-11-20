@@ -5,15 +5,17 @@ namespace LLTacticalWar
 {
     public enum Sfx { UiMove, UiConfirm, UiCancel, Step, Hit, Death, Arrow, Skill, Horn, Victory, Defeat, Flank, Stamp }
 
-    // Every clip is synthesized at startup: no audio assets. Volumes run through a static gain
-    // layer (Music / Sfx) because an AudioMixer can't be authored headlessly; the settings
-    // sliders bind to these two floats.
+    // Sound effects are synthesized at startup; the two music tracks are CC0 recordings under
+    // Resources/Music (see LICENSE.txt there). Volumes run through a static gain layer (Music / Sfx)
+    // because an AudioMixer can't be authored headlessly; the settings sliders bind to these floats.
     public class AudioBank : MonoBehaviour
     {
         public static AudioBank I;
 
         public static float MusicVolume = 0.6f;
         public static float SfxVolume = 0.85f;
+
+        public const string MusicDir = "Music";
 
         const int SR = 22050;
 
@@ -22,9 +24,17 @@ namespace LLTacticalWar
         readonly List<AudioSource> sfxSources = new List<AudioSource>();
         int nextSource;
 
-        AudioSource musicSource, ambientSource;
-        AudioClip tacticMusic, warMusic, ambientBed;
-        float musicBase = 0.35f, ambientBase = 0.18f;
+        // One source per track: the one you leave fades out and pauses, so each piece picks up
+        // where it was. Battles are short, so the battle theme runs on across them.
+        sealed class Track { public AudioSource src; public float gain, startAt, weight; public bool started; }
+        Track mapTrack, battleTrack, current;
+        Track[] tracks;
+        const float CrossfadeSeconds = 0.6f;
+        const float BattleStart = 4f;   // past the theme's quiet opening swell
+
+        AudioSource ambientSource;
+        AudioClip ambientBed;
+        float ambientBase = 0.18f;
         float musicFade = 1f;
 
         void Awake()
@@ -37,8 +47,10 @@ namespace LLTacticalWar
                 s.spatialBlend = 0f;
                 sfxSources.Add(s);
             }
-            musicSource = gameObject.AddComponent<AudioSource>();
-            musicSource.loop = true; musicSource.playOnAwake = false;
+            mapTrack = MakeTrack("map_forest_exploration", 0.45f);
+            battleTrack = MakeTrack("battle_theme", 0.55f);
+            battleTrack.startAt = BattleStart;
+            tracks = new[] { mapTrack, battleTrack };
             ambientSource = gameObject.AddComponent<AudioSource>();
             ambientSource.loop = true; ambientSource.playOnAwake = false;
 
@@ -48,21 +60,37 @@ namespace LLTacticalWar
             PlayTacticMusic();
         }
 
+        Track MakeTrack(string clip, float gain)
+        {
+            var s = gameObject.AddComponent<AudioSource>();
+            s.loop = true; s.playOnAwake = false; s.volume = 0f;
+            s.clip = Resources.Load<AudioClip>(MusicDir + "/" + clip);
+            return new Track { src = s, gain = gain };
+        }
+
         void Update()
         {
-            musicSource.volume = musicBase * musicFade * MusicVolume;
+            float step = Time.unscaledDeltaTime / CrossfadeSeconds;
+            foreach (var t in tracks)
+            {
+                t.weight = Mathf.MoveTowards(t.weight, t == current ? 1f : 0f, step);
+                t.src.volume = t.gain * t.weight * musicFade * MusicVolume;
+                if (t.weight == 0f && t.src.isPlaying) t.src.Pause();
+            }
             ambientSource.volume = ambientBase * MusicVolume;
         }
 
-        public void PlayTacticMusic() { SwapMusic(tacticMusic, 0.32f); }
-        public void PlayWarMusic() { SwapMusic(warMusic, 0.42f); }
+        public void PlayTacticMusic() => SwitchTo(mapTrack);
+        public void PlayWarMusic() => SwitchTo(battleTrack);
 
-        void SwapMusic(AudioClip clip, float vol)
+        void SwitchTo(Track t)
         {
-            if (musicSource.clip == clip && musicSource.isPlaying) return;
-            musicSource.clip = clip;
-            musicBase = vol;
-            musicSource.Play();
+            current = t;
+            if (t.src.clip == null) return;
+            if (t.started) { t.src.UnPause(); return; }
+            t.src.Play();
+            t.src.time = t.startAt;   // after Play: a streamed clip can drop a seek made before it
+            t.started = true;
         }
 
         public void DuckMusic(bool duck) { musicFade = duck ? 0.5f : 1f; }
@@ -99,13 +127,10 @@ namespace LLTacticalWar
             clips[Sfx.Flank]     = Make("flank", 0.3f, (t, i) => (Square(740f, t) * 0.2f + Square(988f, t - 0.08f) * 0.2f * (t > 0.08f ? 1f : 0f)) * Env(t, 0.3f, 0.005f, 0.2f));
 
             ambientBed  = MakeLoop("ambient_wind", 6f, BrownNoise(6f, 0.025f));
-            tacticMusic = MakeLoop("music_tactic", 8f, TacticPad(8f));
-            warMusic    = MakeLoop("music_war", 4f, WarDrums(4f));
         }
 
         static float Sine(float f, float t) => t < 0f ? 0f : Mathf.Sin(2f * Mathf.PI * f * t);
         static float Square(float f, float t) => t < 0f ? 0f : Mathf.Sign(Mathf.Sin(2f * Mathf.PI * f * t)) * 0.7f + Mathf.Sin(2f * Mathf.PI * f * t) * 0.3f;
-        static float Saw(float f, float t) { if (t < 0f) return 0f; float p = f * t; return 2f * (p - Mathf.Floor(p + 0.5f)); }
         static float Noise() => Random.value * 2f - 1f;
 
         // Attack / release envelope; every clip gets at least a 5 ms fade so edges never click.
@@ -191,56 +216,6 @@ namespace LLTacticalWar
                 lp += 0.02f * (b - lp);
                 float swell = 0.7f + 0.3f * Mathf.Sin(2f * Mathf.PI * (i / (float)SR) / len);
                 d[i] = lp * swell * gain * 30f;
-            }
-            return d;
-        }
-
-        // Slow two-chord pad (A minor -> F major), soft sines with a gentle swell.
-        static float[] TacticPad(float len)
-        {
-            int n = Mathf.CeilToInt(len * SR);
-            var d = new float[n];
-            float[] chordA = { 220f, 261.63f, 329.63f, 440f };
-            float[] chordB = { 174.61f, 220f, 261.63f, 349.23f };
-            for (int i = 0; i < n; i++)
-            {
-                float t = i / (float)SR;
-                float half = len / 2f;
-                float local = t % half;
-                var chord = t < half ? chordA : chordB;
-                float env = Mathf.Sin(Mathf.PI * Mathf.Clamp01(local / half));
-                float v = 0f;
-                for (int c = 0; c < chord.Length; c++)
-                    v += Mathf.Sin(2f * Mathf.PI * chord[c] * t + c) * (c == 0 ? 0.35f : 0.2f);
-                // plucked melody note every beat for some motion
-                float beat = 0.5f;
-                float bt = t % beat;
-                int bi = Mathf.FloorToInt(t / beat) % 8;
-                float[] mel = { 659.25f, 587.33f, 523.25f, 440f, 523.25f, 587.33f, 523.25f, 493.88f };
-                v += Mathf.Sin(2f * Mathf.PI * mel[bi] * bt) * Mathf.Exp(-bt * 9f) * 0.18f;
-                d[i] = v * 0.25f * (0.55f + 0.45f * env);
-            }
-            return d;
-        }
-
-        // War drums: kick on the beat, toms on the off-beat, a driving bass pulse. 120 bpm.
-        static float[] WarDrums(float len)
-        {
-            int n = Mathf.CeilToInt(len * SR);
-            var d = new float[n];
-            float beat = 0.5f;
-            float[] bass = { 110f, 110f, 130.81f, 98f, 110f, 110f, 146.83f, 130.81f };
-            for (int i = 0; i < n; i++)
-            {
-                float t = i / (float)SR;
-                float bt = t % beat;
-                int bi = Mathf.FloorToInt(t / beat) % 8;
-                float kick = Mathf.Sin(2f * Mathf.PI * (55f + 90f * Mathf.Exp(-bt * 30f)) * bt) * Mathf.Exp(-bt * 7f);
-                float ot = (t + beat / 2f) % beat;
-                float tom = Mathf.Sin(2f * Mathf.PI * 150f * ot) * Mathf.Exp(-ot * 14f) * (bi % 2 == 1 ? 0.6f : 0.35f);
-                float hat = Noise() * Mathf.Exp(-((t % (beat / 2f)) * 60f)) * 0.12f;
-                float bassV = Saw(bass[bi], t) * 0.18f * Mathf.Exp(-bt * 2.5f);
-                d[i] = (kick * 0.7f + tom * 0.5f + hat + bassV) * 0.5f;
             }
             return d;
         }

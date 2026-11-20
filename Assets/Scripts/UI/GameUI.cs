@@ -69,7 +69,12 @@ namespace LLTacticalWar
         readonly List<(TextMeshProUGUI label, TextMeshProUGUI value)> ledger = new List<(TextMeshProUGUI, TextMeshProUGUI)>();
 
         // unit tags + floating text
-        class Tag { public RectTransform rt; public CanvasGroup group; public Image fill; public TextMeshProUGUI label; public float shown; }
+        class Tag { public RectTransform rt; public CanvasGroup group; public Image fill; public TextMeshProUGUI label; public string text; public bool sized; public float shown; }
+
+        // A tag's slip is sized to its label: seal room on the left, padding on the right.
+        const float TagLeft = 24f, TagRight = 10f, TagMinWidth = 104f;
+        // Tags stay below the turn and army plates (18 px margin + 70 px plate + a gap).
+        const float TopBand = 96f;
         readonly Dictionary<Player, Tag> tags = new Dictionary<Player, Tag>();
         class Floater { public RectTransform rt; public TextMeshProUGUI text; public Vector3 world; public float t, life, rise, popFrom; public bool active; }
         readonly List<Floater> floaters = new List<Floater>();
@@ -580,8 +585,12 @@ namespace LLTacticalWar
             var label = Text(rt, "", 15, Palette.TeamDark(p.team), TextAlignmentOptions.Center);
             var lrt = label.rectTransform;
             lrt.anchorMin = new Vector2(0f, 0.42f); lrt.anchorMax = new Vector2(1f, 1f);
-            lrt.offsetMin = new Vector2(22f, 0f); lrt.offsetMax = new Vector2(-4f, -1f);
+            lrt.offsetMin = new Vector2(TagLeft, 0f); lrt.offsetMax = new Vector2(-TagRight, -1f);
             var bar = MakeBar(rt, new Vector2(26f, -24f), new Vector2(94f, 10f), Palette.Team(p.team), false);
+            var trough = (RectTransform)bar.fill.transform.parent;
+            trough.anchorMax = new Vector2(1f, 1f);
+            trough.offsetMin = new Vector2(TagLeft + 2f, -34f);
+            trough.offsetMax = new Vector2(-TagRight, -24f);
             bar.fill.rectTransform.offsetMin = new Vector2(2f, 2f);
             bar.fill.rectTransform.offsetMax = new Vector2(-2f, -2f);
             tags[p] = new Tag { rt = rt, group = group, fill = bar.fill, label = label, shown = 1f };
@@ -845,9 +854,20 @@ namespace LLTacticalWar
                 if (p == null) { deadTags.Add(p); Destroy(tag.rt.gameObject); continue; }
                 // a rider sits higher: its tag rides up with it, clear of the helmet
                 var pos = WorldToCanvas(p.transform.position + Vector3.up * (2.55f + p.model.Lift * 0.6f), out bool vis);
-                tag.rt.gameObject.SetActive(vis && p.isAlive && p.gameObject.activeInHierarchy);
+                // a unit whose feet are off the top or under the plates shows no tag
+                bool below = WorldToCanvas(p.transform.position, out _).y < root.rect.yMax - TopBand;
+                tag.rt.gameObject.SetActive(vis && below && p.isAlive && p.gameObject.activeInHierarchy);
+                pos.y = Mathf.Min(pos.y, root.rect.yMax - TopBand - tag.rt.sizeDelta.y);
                 tag.rt.anchoredPosition = pos;
-                tag.label.text = (p.broken ? Tint("BROKEN", Palette.CrimsonDark) : p.playerClass.ClassName.ToUpper()) + "  " + Tint(p.currentHealth.ToString(), Palette.Ink);
+                string text = (p.broken ? Tint("BROKEN", Palette.CrimsonDark) : p.playerClass.ClassName.ToUpper()) + "  " + Tint(p.currentHealth.ToString(), Palette.Ink);
+                if (text != tag.text) { tag.text = tag.label.text = text; tag.sized = false; }
+                // TMP measures nothing until the label has been live once, so size on screen
+                if (!tag.sized && tag.rt.gameObject.activeInHierarchy)
+                {
+                    float w = Mathf.Ceil(tag.label.GetPreferredValues(text).x) + TagLeft + TagRight;
+                    tag.rt.sizeDelta = new Vector2(Mathf.Max(TagMinWidth, w), tag.rt.sizeDelta.y);
+                    tag.sized = true;
+                }
                 tag.shown = Mathf.Lerp(tag.shown, p.MaxHP > 0 ? (float)p.currentHealth / p.MaxHP : 0f, k);
                 tag.fill.fillAmount = tag.shown;
                 tag.group.alpha = p.isTurnOver ? 0.6f : 1f;

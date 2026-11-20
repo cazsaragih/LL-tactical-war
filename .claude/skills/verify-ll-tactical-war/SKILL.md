@@ -15,7 +15,7 @@ All commands below run from the project root in Git Bash. `S=.claude/skills/veri
 $S launch
 ```
 
-- Opens this project's Editor if none is open. It writes `Captures/verify/.launched-editor` so cleanup knows to close it.
+- Opens this project's Editor if none is open. It writes `Captures/verify/.launched-editor` so cleanup knows to close it. An Editor that is already open counts as the user's in any state, including mid-compile or mid-reload: `launch` waits for it to be ready and never marks it, so `cleanup` never quits it.
 - Turns on forced ticking (`editor set_auto_tick`), so the game keeps running while the Editor is unfocused.
 - Clears the Editor console, so `errors` reports this run only.
 - Enters Play mode.

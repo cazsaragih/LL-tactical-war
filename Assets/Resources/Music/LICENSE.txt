@@ -1,0 +1,13 @@
+Music in this folder is CC0 1.0 (public domain dedication), from OpenGameArt.org.
+
+map_forest_exploration.ogg
+  "Forest Exploration" (loop version) by Tsorthan Grove
+  https://opengameart.org/content/forest-exploration
+  Source file forest_exploration_loop.flac, re-encoded to Ogg Vorbis 44.1 kHz.
+
+battle_theme.ogg
+  "Battle Theme" by Wolfgang_
+  https://opengameart.org/content/battle-theme-0
+  Source file Battle.mp3, trailing 2.5 s of silence trimmed (ends at 113.55 s), re-encoded to Ogg Vorbis 44.1 kHz.
+
+CC0 needs no attribution; credit is kept here as a courtesy.

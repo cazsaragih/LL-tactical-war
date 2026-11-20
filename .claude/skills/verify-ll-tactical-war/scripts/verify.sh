@@ -58,16 +58,21 @@ print(r if isinstance(r, str) else json.dumps(r, indent=1))'
   local rc=$?; rm -f "$tmp"; return $rc
 }
 
-ready() { unity status --format json 2>/dev/null | python -c '
+# instance <any|ready>: is an Editor for this project running (in any state / ready)?
+instance() { unity status --format json 2>/dev/null | python -c '
 import sys, json, os
-d = json.load(sys.stdin); p = os.path.normcase(sys.argv[1])
-ok = any(os.path.normcase(i.get("project","")) == p and i.get("state") == "ready" for i in d.get("data",{}).get("instances",[]))
-sys.exit(0 if ok else 1)' "$(cygpath -w "$PROJECT" 2>/dev/null || echo "$PROJECT")"; }
+d = json.load(sys.stdin); p = os.path.normcase(sys.argv[1]); want = sys.argv[2]
+ok = any(os.path.normcase(i.get("project","")) == p and (want == "any" or i.get("state") == "ready") for i in d.get("data",{}).get("instances",[]))
+sys.exit(0 if ok else 1)' "$(cygpath -w "$PROJECT" 2>/dev/null || echo "$PROJECT")" "$1"; }
+ready() { instance ready; }
 
 case "${1:-}" in
   launch)
     echo "$RUN_ID" > "$RUNFILE"; mkdir -p "$RUN_DIR"
-    if ready; then echo "Editor already open for $PROJECT (not ours; cleanup will leave it open)."
+    # An Editor that is open but busy (compiling, importing, reloading) is still the user's:
+    # wait for it, never mark it, so cleanup can never quit it.
+    if instance any; then echo "Editor already open for $PROJECT (not ours; cleanup will leave it open)."
+      unity status --until-ready --timeout 300 >/dev/null || { echo "Editor never reached ready"; exit 1; }
     else
       echo "Opening this project's Editor..."
       unity open "$PROJECT" --format json >/dev/null || { echo "unity open failed"; exit 1; }
