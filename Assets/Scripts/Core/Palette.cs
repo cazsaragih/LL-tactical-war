@@ -4,24 +4,20 @@ using UnityEngine;
 namespace LLTacticalWar
 {
     // The art bible, as code. Every colour in the game reads from here.
-    //   Style : toy-soldier war table - KayKit chibi figures on a chunky flat-shaded board,
-    //           two banner colours that read from across the map.
+    //   Style : KayKit chibi figures on a soft-gradient grass board, a field between a blue and a
+    //           red castle in the KayKit Medieval world; two banner colours that read from across the map.
     //   Mood  : late-morning sun from the south-west, warm key, cool sky bounce.
     public static class Palette
     {
         static Color H(string hex) { ColorUtility.TryParseHtmlString(hex, out var c); return c; }
 
-        // Board and terrain
-        public static readonly Color Meadow     = H("#7E9F5B");
-        public static readonly Color MeadowAlt  = H("#75964F");
-        public static readonly Color Pine       = H("#3E6A3C");
-        public static readonly Color PineDark   = H("#2F5230");
-        public static readonly Color Stone      = H("#8A8378");
-        public static readonly Color StoneDark  = H("#6A645B");
-        public static readonly Color Walnut     = H("#6B5136");
-        public static readonly Color Dirt       = H("#7F8C55");   // battlefield steppe grass
-        public static readonly Color DirtDark   = H("#8C7A4E");   // trampled earth patches
-        public static readonly Color Brick      = H("#A65A3C");
+        // Board and terrain (the world around it is the KayKit atlas's own colours)
+        public static readonly Color Meadow     = H("#8FB463");   // board checker, light
+        public static readonly Color MeadowAlt  = H("#84AA58");   // board checker, dark
+        public static readonly Color PineDark   = H("#2F5230");   // the grooves between tiles: the grid lines
+        public static readonly Color Field      = H("#6A8F45");   // the meadow around the board, a step below it
+        public static readonly Color Soil       = H("#8C7A4E");   // the board's earthen bank, top
+        public static readonly Color SoilDark   = H("#6B5136");   // ... and foot
         public static readonly Color Canvas     = H("#E6D8B8");
 
         // Armies
@@ -63,6 +59,7 @@ namespace LLTacticalWar
 
         static Material litBase, overlayBase, particleBase;
         static readonly Dictionary<Color, Material> litCache = new Dictionary<Color, Material>();
+        static readonly Dictionary<Texture, Material> texturedCache = new Dictionary<Texture, Material>();
         static readonly Dictionary<Color, Material> glowCache = new Dictionary<Color, Material>();
 
         static Material LitBase
@@ -86,6 +83,21 @@ namespace LLTacticalWar
             m.SetColor("_Color", c);
             m.SetFloat("_Smoothness", 0.12f);
             litCache[c] = m;
+            return m;
+        }
+
+        // Lit over a gradient atlas (a KayKit one, or the board's swatches), untinted so the
+        // texture's own colours show. One per texture, so everything on it batches together.
+        public static Material Textured(Texture tex)
+        {
+            if (texturedCache.TryGetValue(tex, out var m) && m != null) return m;
+            m = new Material(LitBase) { name = "Lit_" + tex.name };
+            m.SetTexture("_BaseMap", tex);
+            m.SetTexture("_MainTex", tex);
+            m.SetColor("_BaseColor", Color.white);
+            m.SetColor("_Color", Color.white);
+            m.SetFloat("_Smoothness", 0.1f);
+            texturedCache[tex] = m;
             return m;
         }
 

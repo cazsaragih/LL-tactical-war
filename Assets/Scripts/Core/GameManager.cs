@@ -181,7 +181,7 @@ namespace LLTacticalWar
         {
             titleAngle += dt * 5f;
             float a = titleAngle * Mathf.Deg2Rad;
-            titleCam.transform.position = map.Center + new Vector3(Mathf.Sin(a) * 30f, 17f, Mathf.Cos(a) * 30f);
+            titleCam.transform.position = map.Center + new Vector3(Mathf.Sin(a) * 34f, 13f, Mathf.Cos(a) * 34f);   // low enough to see the horizon past the castles
         }
 
         void Update()

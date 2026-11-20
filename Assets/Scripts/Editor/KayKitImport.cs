@@ -14,6 +14,7 @@ namespace LLTacticalWar.EditorTools
     {
         const string Root = "Assets/Resources/KayKit/";
         const string Characters = Root + "Characters/";
+        const string Environment = "Assets/Resources/" + SceneryLayout.Dir;   // EnvironmentImport's
 
         // Bumps whenever the clip list or the scale changes, so Unity reimports the pack.
         public override uint GetVersion()
@@ -26,7 +27,7 @@ namespace LLTacticalWar.EditorTools
 
         void OnPreprocessModel()
         {
-            if (!assetPath.StartsWith(Root)) return;
+            if (!assetPath.StartsWith(Root) || assetPath.StartsWith(Environment)) return;
             var m = (ModelImporter)assetImporter;
             bool character = assetPath.StartsWith(Characters);
             m.globalScale = UnitLooks.ImportScale;

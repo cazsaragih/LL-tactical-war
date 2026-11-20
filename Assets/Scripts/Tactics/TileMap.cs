@@ -3,9 +3,9 @@ using UnityEngine;
 
 namespace LLTacticalWar
 {
-    // Ported from the 2015 TileMap: a generated grid mesh, tile neighbour links, and
-    // point-filtered textures that highlight tiles. Ranges are now flood fills that respect the
-    // map edges and occupied tiles; the old diamond walk crashed near an edge.
+    // Ported from the 2015 TileMap: tile neighbour links and point-filtered textures that
+    // highlight tiles; Scenery builds what the board looks like. Ranges are now flood fills that
+    // respect the map edges and occupied tiles; the old diamond walk crashed near an edge.
     public class TileMap : MonoBehaviour
     {
         public static TileMap instance;
@@ -42,7 +42,6 @@ namespace LLTacticalWar
         {
             instance = this;
             BuildTiles();
-            BuildBoardMesh();
             BuildOverlay();
             Scenery.BuildBoard(this);
         }
@@ -72,49 +71,6 @@ namespace LLTacticalWar
         }
 
         public char LayoutAt(TileMapInfo t) => Layout[tileZ - 1 - t.z][t.x];
-
-        // Checkerboard of slightly inset tile tops over a dark board, two submeshes so each
-        // checker colour gets its own palette material.
-        void BuildBoardMesh()
-        {
-            var verts = new List<Vector3>();
-            var normals = new List<Vector3>();
-            var a = new List<int>();
-            var b = new List<int>();
-            float inset = 0.05f;
-            foreach (var t in tiles)
-            {
-                float x0 = t.x * tileSize + inset, x1 = (t.x + 1) * tileSize - inset;
-                float z0 = t.z * tileSize + inset, z1 = (t.z + 1) * tileSize - inset;
-                int v = verts.Count;
-                verts.Add(new Vector3(x0, 0, z0)); verts.Add(new Vector3(x0, 0, z1));
-                verts.Add(new Vector3(x1, 0, z1)); verts.Add(new Vector3(x1, 0, z0));
-                for (int i = 0; i < 4; i++) normals.Add(Vector3.up);
-                var list = ((t.x + t.z) % 2 == 0) ? a : b;
-                list.AddRange(new[] { v, v + 1, v + 2, v, v + 2, v + 3 });
-            }
-            var mesh = new Mesh { name = "TileBoard" };
-            mesh.SetVertices(verts);
-            mesh.SetNormals(normals);
-            mesh.subMeshCount = 2;
-            mesh.SetTriangles(a, 0);
-            mesh.SetTriangles(b, 1);
-            mesh.RecalculateBounds();
-
-            var go = new GameObject("TileTops");
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = new Vector3(0, 0.02f, 0);
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var r = go.AddComponent<MeshRenderer>();
-            r.sharedMaterials = new[] { Palette.Lit(Palette.Meadow), Palette.Lit(Palette.MeadowAlt) };
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-
-            // board slab + collider so the cursor ray still has something to hit
-            var slab = Prim.Part("BoardSlab", PrimitiveType.Cube, transform,
-                new Vector3(tileX * tileSize / 2f, -0.3f, tileZ * tileSize / 2f),
-                new Vector3(tileX * tileSize + 0.1f, 0.6f, tileZ * tileSize + 0.1f), Palette.PineDark);
-            slab.AddComponent<BoxCollider>();
-        }
 
         void BuildOverlay()
         {

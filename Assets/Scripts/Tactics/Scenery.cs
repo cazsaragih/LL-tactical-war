@@ -1,136 +1,334 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
+using Object = UnityEngine.Object;
 
 namespace LLTacticalWar
 {
-    // Environment dressing. No bare planes: the board sits on a walnut war table, obstacles are
-    // little tree clumps and rock piles, the enemy holds a brick fort to the north and your camp
-    // tents sit to the south.
+    // Builds the world from SceneryLayout: the board's bevelled grass tiles on an earthen bank, the
+    // KayKit trees and rocks on its obstacle tiles, both camps and their wilds, mountains and drifting
+    // clouds; and the 1v1 stage with its backdrop. Every KayKit piece shares one URP Lit material on
+    // the pack's atlas, the tiles and the meadow share one on the Palette's board swatches, and each
+    // root is static-batched once it is built.
     public static class Scenery
     {
+        static Material kit, board;
+        static readonly Dictionary<string, (Vector2 centre, float radius)> footprints = new Dictionary<string, (Vector2, float)>();
+
+        static Material Kit => kit != null ? kit : kit = Palette.Textured(Resources.Load<Texture2D>(SceneryLayout.Dir + SceneryLayout.Atlas));
+        static Material Board => board != null ? board : board = Palette.Textured(Swatches());
+
         public static void BuildBoard(TileMap map)
         {
             var root = new GameObject("Scenery").transform;
             root.SetParent(map.transform, false);
-            float w = map.tileX * map.tileSize, h = map.tileZ * map.tileSize;
+            var centre = map.Center;
+            var ground = centre + Vector3.up * SceneryLayout.GroundY;
 
-            // the table and the meadow beyond it
-            Prim.Part("TableTop", PrimitiveType.Cube, root, new Vector3(w / 2f, -0.75f, h / 2f), new Vector3(w + 3f, 0.5f, h + 3f), Palette.Walnut);
-            Prim.Part("TableTrim", PrimitiveType.Cube, root, new Vector3(w / 2f, -0.46f, h / 2f), new Vector3(w + 0.7f, 0.08f, h + 0.7f), Palette.Gold);
-            Prim.Part("Field", PrimitiveType.Cube, root, new Vector3(w / 2f, -1.1f, h / 2f), new Vector3(w + 80f, 0.2f, h + 80f), Palette.Pine);
+            Plot(root, "Board", map.tileX, map.tileZ, new Vector2(map.tileSize, map.tileSize), Vector3.zero, SceneryLayout.GroundY, new System.Random(SceneryLayout.SurfaceSeed));
+            Ground(root, ground);
 
-            var rng = new System.Random(7);
             foreach (var t in map.tiles)
+                if (SceneryLayout.Obstacles.TryGetValue(map.LayoutAt(t), out var looks))
+                {
+                    var r = new System.Random(SceneryLayout.ObstacleSeed * 7919 + t.index);
+                    var look = looks[r.Next(looks.Length)];
+                    var turn = Quaternion.Euler(0f, (float)r.NextDouble() * 360f, 0f);
+                    foreach (var p in look) Put(root, p, t.position, turn, null);
+                }
+
+            foreach (var team in new[] { Team.Player, Team.Enemy })
             {
-                char c = map.LayoutAt(t);
-                if (c == 'T') TreeClump(root, t.position, rng);
-                else if (c == 'R') RockPile(root, t.position, rng);
+                var turn = Quaternion.Euler(0f, team == Team.Player ? 0f : 180f, 0f);
+                var taken = new List<(Vector2, float)>();
+                foreach (var p in SceneryLayout.Camp) { Claim(taken, p, true); Put(root, p, ground, turn, Colour(team)); }
+                foreach (var s in SceneryLayout.Wilds)
+                    foreach (var p in Fill(s, (int)team, taken)) Put(root, p, ground, turn, null);
+            }
+            foreach (var p in Spread(SceneryLayout.Horizon)) Put(root, p, ground, Quaternion.identity, null, false);
+            StaticBatchingUtility.Combine(root.gameObject);
+
+            Clouds(map.transform, ground, SceneryLayout.Clouds);
+        }
+
+        // The 1v1 stage: two board squares for the two fighters on a grass plot, in a meadow ringed by
+        // trees and hills, with the defender's keep on the horizon. The camera looks from -z, so the
+        // dressing sits behind. Returns the call that raises the defender's keep for a battle.
+        public static Action<Team> BuildStage(Transform parent)
+        {
+            var root = new GameObject("Stage").transform;
+            root.SetParent(parent, false);
+            var ground = Vector3.up * SceneryLayout.StageGroundY;
+
+            Plot(root, "StagePlot", 2, 1, new Vector2(5.2f, 4.8f), new Vector3(-5.2f, 0f, -2.4f), SceneryLayout.StageGroundY, new System.Random(SceneryLayout.SurfaceSeed));
+            Ground(root, ground);
+            var taken = new List<(Vector2, float)> { (Vector2.zero, 6f) };   // the plot
+            foreach (var p in SceneryLayout.Stage) { Claim(taken, p, true); Put(root, p, ground, Quaternion.identity, null); }
+            foreach (var s in SceneryLayout.StageWilds)
+                foreach (var p in Fill(s, 0, taken)) Put(root, p, ground, Quaternion.identity, null);
+            foreach (var p in Spread(SceneryLayout.StageHorizon)) Put(root, p, ground, Quaternion.identity, null, false);
+
+            var keeps = new Dictionary<Team, GameObject>();
+            foreach (var team in new[] { Team.Player, Team.Enemy })
+            {
+                var k = new GameObject("Keep_" + team).transform;
+                k.SetParent(root, false);
+                foreach (var p in SceneryLayout.StageKeep)
+                    Put(k, team == Team.Enemy ? p : new Piece(p.Model, -p.X, p.Z, -p.Yaw, p.Scale, p.Y), ground, Quaternion.identity, Colour(team), false);
+                keeps[team] = k.gameObject;
+            }
+            StaticBatchingUtility.Combine(root.gameObject);
+
+            Clouds(parent, ground, SceneryLayout.StageClouds);
+            return defender => { foreach (var kv in keeps) kv.Value.SetActive(kv.Key == defender); };
+        }
+
+        static string Colour(Team team) => team == Team.Player ? "blue" : "red";
+
+        // ---------------- pieces ----------------
+
+        // A piece with its footprint centred on its spot: (X, Z) turned by `turn` about `origin`.
+        static void Put(Transform parent, Piece p, Vector3 origin, Quaternion turn, string colour, bool shadows = true)
+        {
+            string model = colour == null ? p.Model : p.Model.Replace("{team}", colour);
+            var src = Resources.Load<GameObject>(SceneryLayout.Dir + model);
+            var go = Object.Instantiate(src, parent, false);
+            go.name = model;
+            var rot = turn * Quaternion.Euler(0f, p.Yaw, 0f);
+            var fp = Footprint(src);
+            go.transform.localScale = src.transform.localScale * p.Scale;
+            go.transform.localRotation = rot * src.transform.localRotation;
+            go.transform.localPosition = origin + turn * new Vector3(p.X, p.Y, p.Z) - rot * new Vector3(fp.centre.x, 0f, fp.centre.y) * p.Scale;
+            foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
+            {
+                var mats = new Material[r.GetComponent<MeshFilter>().sharedMesh.subMeshCount];
+                for (int i = 0; i < mats.Length; i++) mats[i] = Kit;
+                r.sharedMaterials = mats;
+                r.shadowCastingMode = shadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
+            }
+        }
+
+        // The model's footprint at import scale, through its root's own rotation and scale: its
+        // bounds' centre and half-width on the ground.
+        static (Vector2 centre, float radius) Footprint(GameObject src)
+        {
+            if (footprints.TryGetValue(src.name, out var f)) return f;
+            var b = new Bounds();
+            bool any = false;
+            foreach (var mf in src.GetComponentsInChildren<MeshFilter>())
+            {
+                var mb = mf.sharedMesh.bounds;
+                for (int i = 0; i < 8; i++)
+                {
+                    var corner = mb.center + Vector3.Scale(mb.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                    var p = mf.transform.localToWorldMatrix.MultiplyPoint3x4(corner) - src.transform.localPosition;
+                    if (any) b.Encapsulate(p); else { b = new Bounds(p, Vector3.zero); any = true; }
+                }
+            }
+            f = (new Vector2(b.center.x, b.center.z), Mathf.Max(b.extents.x, b.extents.z));
+            footprints[src.name] = f;
+            return f;
+        }
+
+        static float Radius(string model) => Footprint(Resources.Load<GameObject>(SceneryLayout.Dir + model.Replace("{team}", "blue"))).radius;
+
+        // Room on the ground: a piece may lean into its neighbours a little, never stand inside one.
+        // An authored piece (`always`) takes its room regardless, so scatters flow around it.
+        static bool Claim(List<(Vector2 at, float r)> taken, Piece p, bool always = false)
+        {
+            var at = new Vector2(p.X, p.Z);
+            float r = Radius(p.Model) * p.Scale * 0.8f;
+            if (!always)
+                foreach (var t in taken)
+                    if ((t.at - at).sqrMagnitude < (t.r + r) * (t.r + r)) return false;
+            taken.Add((at, r));
+            return true;
+        }
+
+        static float Between(Vector2 range, System.Random rng) => Mathf.Lerp(range.x, range.y, (float)rng.NextDouble());
+
+        // A scatter's pieces, each on free ground. `salt` gives each side its own draw.
+        static List<Piece> Fill(Scatter s, int salt, List<(Vector2, float)> taken)
+        {
+            var rng = new System.Random(s.Seed * 7919 + salt);
+            var list = new List<Piece>();
+            for (int tries = 0; list.Count < s.Count && tries < s.Count * 40; tries++)
+            {
+                var p = new Piece(s.Models[rng.Next(s.Models.Length)],
+                                  Mathf.Lerp(s.Area.xMin, s.Area.xMax, (float)rng.NextDouble()),
+                                  Mathf.Lerp(s.Area.yMin, s.Area.yMax, (float)rng.NextDouble()),
+                                  (float)rng.NextDouble() * 360f, Between(s.Scale, rng));
+                if (Claim(taken, p)) list.Add(new Piece(p.Model, p.X, p.Z, p.Yaw, p.Scale, -s.Sink * p.Scale));
+            }
+            return list;
+        }
+
+        // A ring's pieces, one per slot of its arc.
+        static List<Piece> Spread(Ring g)
+        {
+            var rng = new System.Random(g.Seed);
+            var list = new List<Piece>();
+            for (int i = 0; i < g.Count; i++)
+            {
+                float a = Mathf.Lerp(g.Arc.x, g.Arc.y, (i + 0.2f + 0.6f * (float)rng.NextDouble()) / g.Count) * Mathf.Deg2Rad;
+                float r = Between(g.Radius, rng);
+                list.Add(new Piece(g.Models[rng.Next(g.Models.Length)], Mathf.Sin(a) * r, Mathf.Cos(a) * r,
+                                   (float)rng.NextDouble() * 360f, Between(g.Scale, rng), Between(g.Height, rng)));
+            }
+            return list;
+        }
+
+        // Clouds turn slowly about the centre, so they stay out of the static batch.
+        static void Clouds(Transform parent, Vector3 centre, Ring ring)
+        {
+            var pivot = new GameObject("Clouds").transform;
+            pivot.SetParent(parent, false);
+            pivot.localPosition = centre;
+            foreach (var p in Spread(ring)) Put(pivot, p, Vector3.zero, Quaternion.identity, null, false);
+            pivot.gameObject.AddComponent<Drift>().degreesPerSecond = SceneryLayout.CloudDrift;
+        }
+
+        // ---------------- ground and board ----------------
+
+        // The meadow: one wide quad in the Palette's field green, fading into the fog long before its edge.
+        static void Ground(Transform parent, Vector3 centre)
+        {
+            const float half = 200f;
+            var uv = new Vector2((FieldColumn + 0.5f) / SwatchW, 0.5f);
+            var mesh = new Mesh { name = "Ground" };
+            mesh.SetVertices(new[] { centre + new Vector3(-half, 0, -half), centre + new Vector3(-half, 0, half), centre + new Vector3(half, 0, half), centre + new Vector3(half, 0, -half) });
+            mesh.SetNormals(new[] { Vector3.up, Vector3.up, Vector3.up, Vector3.up });
+            mesh.SetUVs(0, new[] { uv, uv, uv, uv });
+            mesh.SetTriangles(new[] { 0, 1, 2, 0, 2, 3 }, 0);
+            mesh.RecalculateBounds();
+            Surface(parent, "Ground", mesh, Board);
+        }
+
+        // The board swatches: one soft vertical gradient per column, like a KayKit atlas. Columns
+        // 0-3 are the light checker's shades, 4-7 the dark one's, then the groove, the bank and the field.
+        const int Shades = 4, GrooveColumn = 2 * Shades, BankColumn = GrooveColumn + 1, FieldColumn = BankColumn + 1, SwatchW = 16;
+
+        static Texture2D Swatches()
+        {
+            const int h = 32;
+            var tex = new Texture2D(SwatchW, h, TextureFormat.RGBA32, false) { name = "BoardSwatches", filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            var px = new Color[SwatchW * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < SwatchW; x++)
+                {
+                    float v = y / (h - 1f);
+                    Color c;
+                    if (x < GrooveColumn)
+                        c = (x < Shades ? Palette.Meadow : Palette.MeadowAlt) * (Mathf.Lerp(0.965f, 1.035f, x % Shades / (Shades - 1f)) * Mathf.Lerp(0.84f, 1.06f, v));
+                    else if (x == GrooveColumn) c = Palette.PineDark * Mathf.Lerp(0.9f, 1.1f, v);
+                    else if (x == BankColumn) c = Color.Lerp(Palette.SoilDark, Palette.Soil, v);
+                    else c = Palette.Field;
+                    c.a = 1f;
+                    px[y * SwatchW + x] = c;
+                }
+            tex.SetPixels(px);
+            tex.Apply(false, true);
+            return tex;
+        }
+
+        // A grass plot of cols x rows bevelled tiles from `origin` (its south-west corner, tile-top
+        // level): each tile a soft dome of its checker shade, a chamfer down to the dark grooves that
+        // draw the grid, and an earthen bank from the plot's rim down to groundY.
+        static void Plot(Transform parent, string name, int cols, int rows, Vector2 tile, Vector3 origin, float groundY, System.Random rng)
+        {
+            const float top = 0.02f, floor = -0.07f, groove = 0.035f, bevel = 0.13f, bankRun = 0.1f;
+            var b = new MeshBuilder();
+            float w = cols * tile.x, d = rows * tile.y;
+            for (int z = 0; z < rows; z++)
+                for (int x = 0; x < cols; x++)
+                {
+                    float u = (((x + z) % 2) * Shades + rng.Next(Shades) + 0.5f) / SwatchW;
+                    var o0 = new Vector2(x * tile.x + groove, z * tile.y + groove);
+                    var o1 = new Vector2((x + 1) * tile.x - groove, (z + 1) * tile.y - groove);
+                    var i0 = o0 + Vector2.one * bevel;
+                    var i1 = o1 - Vector2.one * bevel;
+                    var inner = Corners(i0, i1, top);
+                    var outer = Corners(o0, o1, floor);
+                    var mid = new Vector3((i0.x + i1.x) / 2f, top, (i0.y + i1.y) / 2f);
+                    for (int k = 0; k < 4; k++)
+                    {
+                        b.Face(Vector3.up, (mid, new Vector2(u, 1f)), (inner[k], new Vector2(u, 0.78f)), (inner[(k + 1) % 4], new Vector2(u, 0.78f)));
+                        var outward = (inner[k] + inner[(k + 1) % 4]) / 2f - mid;
+                        b.Face(outward, (outer[k], new Vector2(u, 0.3f)), (inner[k], new Vector2(u, 0.78f)), (inner[(k + 1) % 4], new Vector2(u, 0.78f)), (outer[(k + 1) % 4], new Vector2(u, 0.3f)));
+                    }
+                }
+            var gu = (GrooveColumn + 0.5f) / SwatchW;
+            var rim = Corners(Vector2.zero, new Vector2(w, d), floor);
+            b.Face(Vector3.up, (rim[0], new Vector2(gu, 0.5f)), (rim[1], new Vector2(gu, 0.5f)), (rim[2], new Vector2(gu, 0.5f)), (rim[3], new Vector2(gu, 0.5f)));
+            var bu = (BankColumn + 0.5f) / SwatchW;
+            var foot = Corners(-Vector2.one * bankRun, new Vector2(w, d) + Vector2.one * bankRun, groundY);
+            var plotMid = new Vector3(w / 2f, floor, d / 2f);
+            for (int k = 0; k < 4; k++)
+            {
+                var outward = (rim[k] + rim[(k + 1) % 4]) / 2f - plotMid;
+                b.Face(outward, (foot[k], new Vector2(bu, 0f)), (rim[k], new Vector2(bu, 1f)), (rim[(k + 1) % 4], new Vector2(bu, 1f)), (foot[(k + 1) % 4], new Vector2(bu, 0f)));
+            }
+            var mesh = b.Build(name);
+            var go = Surface(parent, name, mesh, Board);
+            go.transform.localPosition = origin;
+        }
+
+        // Clockwise from above: (x0, z0), (x0, z1), (x1, z1), (x1, z0).
+        static Vector3[] Corners(Vector2 a, Vector2 b, float y) =>
+            new[] { new Vector3(a.x, y, a.y), new Vector3(a.x, y, b.y), new Vector3(b.x, y, b.y), new Vector3(b.x, y, a.y) };
+
+        static GameObject Surface(Transform parent, string name, Mesh mesh, Material mat)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var r = go.AddComponent<MeshRenderer>();
+            r.sharedMaterial = mat;
+            r.shadowCastingMode = ShadowCastingMode.Off;
+            return go;
+        }
+
+        // Flat-shaded polygons: each face gets its own vertices and the normal its winding gives,
+        // flipped to agree with the side it should face.
+        sealed class MeshBuilder
+        {
+            readonly List<Vector3> verts = new List<Vector3>(), normals = new List<Vector3>();
+            readonly List<Vector2> uvs = new List<Vector2>();
+            readonly List<int> tris = new List<int>();
+
+            public void Face(Vector3 facing, params (Vector3 p, Vector2 uv)[] c)
+            {
+                var n = Vector3.Cross(c[1].p - c[0].p, c[2].p - c[0].p).normalized;
+                bool flip = Vector3.Dot(n, facing) < 0f;
+                if (flip) n = -n;
+                int v = verts.Count;
+                foreach (var corner in c) { verts.Add(corner.p); normals.Add(n); uvs.Add(corner.uv); }
+                for (int i = 1; i < c.Length - 1; i++)
+                {
+                    tris.Add(v);
+                    tris.Add(v + (flip ? i + 1 : i));
+                    tris.Add(v + (flip ? i : i + 1));
+                }
             }
 
-            Fort(root, new Vector3(w / 2f, 0f, h + 5.5f));
-            Camp(root, new Vector3(w / 2f, -1f, -9f));
-
-            // distant tree ring so the horizon isn't empty
-            for (int i = 0; i < 46; i++)
+            public Mesh Build(string name)
             {
-                float ang = i / 46f * Mathf.PI * 2f;
-                float rad = Mathf.Max(w, h) * 0.85f + (float)rng.NextDouble() * 6f;
-                var p = new Vector3(w / 2f + Mathf.Cos(ang) * rad, -1f, h / 2f + Mathf.Sin(ang) * rad * 0.8f);
-                Tree(root, p, 1.6f + (float)rng.NextDouble(), rng);
+                var m = new Mesh { name = name };
+                m.SetVertices(verts);
+                m.SetNormals(normals);
+                m.SetUVs(0, uvs);
+                m.SetTriangles(tris, 0);
+                m.RecalculateBounds();
+                return m;
             }
         }
+    }
 
-        public static void Tree(Transform parent, Vector3 pos, float scale, System.Random rng)
-        {
-            var t = new GameObject("Tree").transform;
-            t.SetParent(parent, false);
-            t.localPosition = pos;
-            t.localRotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, (float)rng.NextDouble() * 6f - 3f);
-            t.localScale = Vector3.one * scale;
-            Prim.Part("Trunk", PrimitiveType.Cylinder, t, new Vector3(0, 0.3f, 0), new Vector3(0.16f, 0.3f, 0.16f), Palette.Wood);
-            Prim.Part("Crown1", PrimitiveType.Sphere, t, new Vector3(0, 0.85f, 0), new Vector3(0.8f, 0.6f, 0.8f), Palette.Pine);
-            Prim.Part("Crown2", PrimitiveType.Sphere, t, new Vector3(0.05f, 1.3f, 0.02f), new Vector3(0.55f, 0.5f, 0.55f), Palette.PineDark);
-            Prim.Part("Crown3", PrimitiveType.Sphere, t, new Vector3(0, 1.65f, 0), new Vector3(0.3f, 0.32f, 0.3f), Palette.Pine);
-        }
-
-        static void TreeClump(Transform parent, Vector3 center, System.Random rng)
-        {
-            Tree(parent, center + new Vector3(-0.35f, 0, 0.3f), 1.05f, rng);
-            Tree(parent, center + new Vector3(0.45f, 0, -0.1f), 0.85f, rng);
-            Tree(parent, center + new Vector3(-0.1f, 0, -0.5f), 0.7f, rng);
-        }
-
-        static void RockPile(Transform parent, Vector3 center, System.Random rng)
-        {
-            Prim.Part("Rock", PrimitiveType.Sphere, parent, center + new Vector3(0, 0.3f, 0), new Vector3(1.2f, 0.75f, 1.0f), Palette.Stone, new Vector3(0, (float)rng.NextDouble() * 90f, 8f));
-            Prim.Part("Rock", PrimitiveType.Sphere, parent, center + new Vector3(0.5f, 0.2f, 0.4f), new Vector3(0.6f, 0.45f, 0.55f), Palette.StoneDark, new Vector3(0, 30f, -10f));
-            Prim.Part("Rock", PrimitiveType.Sphere, parent, center + new Vector3(-0.5f, 0.15f, -0.4f), new Vector3(0.5f, 0.35f, 0.5f), Palette.Stone);
-        }
-
-        static void Fort(Transform parent, Vector3 pos)
-        {
-            var f = new GameObject("EnemyFort").transform;
-            f.SetParent(parent, false);
-            f.localPosition = pos;
-            Prim.Part("Wall", PrimitiveType.Cube, f, new Vector3(0, 1f, 0), new Vector3(12f, 2f, 1.2f), Palette.Brick);
-            for (int i = -5; i <= 5; i += 2)
-                Prim.Part("Merlon", PrimitiveType.Cube, f, new Vector3(i, 2.25f, 0), new Vector3(0.9f, 0.5f, 1.25f), Palette.Brick);
-            foreach (float x in new[] { -6.5f, 6.5f })
-            {
-                Prim.Part("Tower", PrimitiveType.Cylinder, f, new Vector3(x, 1.6f, 0), new Vector3(2f, 1.6f, 2f), Palette.Brick);
-                Prim.Part("Roof", PrimitiveType.Cylinder, f, new Vector3(x, 3.35f, 0), new Vector3(2.3f, 0.15f, 2.3f), Palette.CrimsonDark);
-                Prim.Part("Spire", PrimitiveType.Cylinder, f, new Vector3(x, 3.9f, 0), new Vector3(1.2f, 0.45f, 1.2f), Palette.CrimsonDark);
-                Prim.Part("FlagPole", PrimitiveType.Cylinder, f, new Vector3(x, 4.9f, 0), new Vector3(0.06f, 0.6f, 0.06f), Palette.Wood);
-                Prim.Part("Flag", PrimitiveType.Cube, f, new Vector3(x + 0.45f, 5.25f, 0), new Vector3(0.9f, 0.5f, 0.04f), Palette.Crimson);
-            }
-            Prim.Part("Gate", PrimitiveType.Cube, f, new Vector3(0, 0.75f, -0.62f), new Vector3(2.2f, 1.5f, 0.1f), Palette.Walnut);
-            Prim.Part("GateArch", PrimitiveType.Cube, f, new Vector3(0, 1.6f, -0.64f), new Vector3(2.6f, 0.2f, 0.12f), Palette.StoneDark);
-        }
-
-        static void Camp(Transform parent, Vector3 pos)
-        {
-            var c = new GameObject("PlayerCamp").transform;
-            c.SetParent(parent, false);
-            c.localPosition = pos;
-            for (int i = -2; i <= 2; i++)
-            {
-                if (i == 0) continue;
-                var tent = new GameObject("Tent").transform;
-                tent.SetParent(c, false);
-                tent.localPosition = new Vector3(i * 3.2f, 0, Mathf.Abs(i) * 0.6f);
-                tent.localRotation = Quaternion.Euler(0, i * 6f, 0);
-                Prim.Part("Canvas", PrimitiveType.Cube, tent, new Vector3(0, 0.75f, 0), new Vector3(1.5f, 1.5f, 2.2f), Palette.Canvas, new Vector3(0, 0, 45f));
-                Prim.Part("Stripe", PrimitiveType.Cube, tent, new Vector3(0, 0.75f, 0), new Vector3(1.52f, 0.3f, 2.22f), Palette.Azure, new Vector3(0, 0, 45f));
-                Prim.Part("Pole", PrimitiveType.Cylinder, tent, new Vector3(0, 1.4f, 1.15f), new Vector3(0.06f, 0.5f, 0.06f), Palette.Wood);
-            }
-            Prim.Part("Banner", PrimitiveType.Cube, c, new Vector3(0, 2.4f, 0.6f), new Vector3(1f, 0.6f, 0.04f), Palette.Azure);
-            Prim.Part("BannerPole", PrimitiveType.Cylinder, c, new Vector3(-0.55f, 1.5f, 0.6f), new Vector3(0.07f, 1.5f, 0.07f), Palette.Wood);
-            Prim.Part("Fire", PrimitiveType.Sphere, c, new Vector3(0, 0.15f, 2.2f), new Vector3(0.5f, 0.3f, 0.5f), Palette.StoneDark);
-        }
-
-        // ---------------- battle stage ----------------
-
-        // The 1v1 stage: one board square lifted off the war table, split into the two fighters'
-        // halves, in a meadow ringed by trees. The camera looks from -z, so dressing sits behind.
-        public static void BuildStage(Transform parent)
-        {
-            Prim.Part("StageBase", PrimitiveType.Cube, parent, new Vector3(0, -0.42f, 0), new Vector3(11.2f, 0.7f, 5.4f), Palette.Walnut);
-            Prim.Part("StageTrim", PrimitiveType.Cube, parent, new Vector3(0, -0.06f, 0), new Vector3(10.7f, 0.06f, 4.9f), Palette.Gold);
-            Prim.Part("HalfL", PrimitiveType.Cube, parent, new Vector3(-2.6f, -0.04f, 0), new Vector3(5.1f, 0.1f, 4.6f), Palette.Meadow);
-            Prim.Part("HalfR", PrimitiveType.Cube, parent, new Vector3(2.6f, -0.04f, 0), new Vector3(5.1f, 0.1f, 4.6f), Palette.MeadowAlt);
-            Prim.Part("Field", PrimitiveType.Cube, parent, new Vector3(0, -1.3f, 6f), new Vector3(180f, 0.2f, 120f), Palette.Pine);
-
-            var rng = new System.Random(23);
-            for (int i = 0; i < 34; i++)
-            {
-                float x = -22f + i * (44f / 33f) + ((float)rng.NextDouble() - 0.5f) * 1.6f;
-                float z = 10f + (float)rng.NextDouble() * 10f;
-                Tree(parent, new Vector3(x * 1.3f, -1.2f, z), 2.4f + (float)rng.NextDouble() * 1.4f, rng);
-            }
-            foreach (float side in new[] { -1f, 1f })
-                for (int i = 0; i < 6; i++)
-                    Tree(parent, new Vector3(side * (9f + (float)rng.NextDouble() * 6f), -1.2f, -2f + i * 1.8f), 1.8f + (float)rng.NextDouble(), rng);
-            Prim.Part("Rock", PrimitiveType.Sphere, parent, new Vector3(-7.5f, -0.9f, 3.5f), new Vector3(2.2f, 1.4f, 1.8f), Palette.Stone, new Vector3(0, 30f, 0));
-            Prim.Part("Rock", PrimitiveType.Sphere, parent, new Vector3(8.2f, -0.95f, 4.5f), new Vector3(1.6f, 1f, 1.4f), Palette.StoneDark, new Vector3(0, 70f, 0));
-        }
+    // Turns its object slowly about its own vertical axis: the clouds' drift.
+    public sealed class Drift : MonoBehaviour
+    {
+        public float degreesPerSecond;
+        void Update() => transform.Rotate(0f, degreesPerSecond * Time.deltaTime, 0f);
     }
 }

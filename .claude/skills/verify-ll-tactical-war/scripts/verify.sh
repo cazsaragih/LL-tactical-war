@@ -5,6 +5,7 @@
 #   verify.sh launch            open this project's Editor if needed, enter Play mode, keep it ticking
 #   verify.sh doctor            read-only: is the instance worth driving?
 #   verify.sh state             read-only snapshot (shell, turn, cursor, units, menu, battle)
+#   verify.sh sightlines        read-only: does any scenery block the map camera's view of a tile or hide a figure?
 #   verify.sh press <action>    one simulated button press: confirm cancel pause up down left right danger
 #   verify.sh nudge <dx> <dz>   move the tactics cursor by whole tiles (+x east, +z north)
 #   verify.sh hold <action> <s> hold a button for s real seconds (hold confirm = battle at 2x)
@@ -92,6 +93,10 @@ g = json.load(sys.stdin).get("data", {}).get("result", {}).get("groundTruth", {}
 print("console: errors", g.get("consoleErrors"), " warnings", g.get("consoleWarnings"), " compileFailed", g.get("compilationFailed"))' ;;
 
   state)   ucmd script eval --file "$PROJECT/.claude/skills/verify-ll-tactical-war/scripts/probe.cs" --format json | python -c '
+import sys, json; d = json.load(sys.stdin); r = d.get("data")
+r = r.get("result", r) if isinstance(r, dict) else r
+print(r if d.get("success") else d.get("errors"))' ;;
+  sightlines) ucmd script eval --file "$PROJECT/.claude/skills/verify-ll-tactical-war/scripts/sightlines.cs" --format json | python -c '
 import sys, json; d = json.load(sys.stdin); r = d.get("data")
 r = r.get("result", r) if isinstance(r, dict) else r
 print(r if d.get("success") else d.get("errors"))' ;;

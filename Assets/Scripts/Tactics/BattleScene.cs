@@ -42,6 +42,7 @@ namespace LLTacticalWar
         const float CamFov = 33f;
 
         Transform root, arrow, bolt;
+        Action<Team> showKeep;
         CinemachineCamera cam;
         Actor left, right;
         float slowMo = 1f, hitStop = 1f, trauma;
@@ -53,7 +54,7 @@ namespace LLTacticalWar
         public void Build(Transform battleRoot)
         {
             root = battleRoot;
-            Scenery.BuildStage(root);
+            showKeep = Scenery.BuildStage(root);
             cam = new GameObject("CM_Battle").AddComponent<CinemachineCamera>();
             cam.transform.SetParent(root, false);
             cam.Lens.FarClipPlane = 400f;
@@ -176,6 +177,7 @@ namespace LLTacticalWar
 
             camPos = CamHome; camLook = CamLook; camFov = CamFov;
             PoseCamera(0f);
+            showKeep(f.defender.unit.team);
             cam.Priority = 100;
             GameManager.I.ShowBattle(true);
             GameUI.I.SetTacticHud(false);
