@@ -8,16 +8,21 @@ namespace LLTacticalWar
 {
     // Builds the world from SceneryLayout: the board's bevelled grass tiles on an earthen bank, the
     // KayKit trees and rocks on its obstacle tiles, both camps and their wilds, mountains and drifting
-    // clouds; and the 1v1 stage with its backdrop. Every KayKit piece shares one URP Lit material on
-    // the pack's atlas, the tiles and the meadow share one on the Palette's board swatches, and each
-    // root is static-batched once it is built.
+    // clouds; and the 1v1 stage with its backdrop. Every KayKit piece draws in toon on the pack's
+    // atlas (outlined near the board, plain on the horizon), the tiles and the meadow in soft toon on
+    // the Palette's board swatches, and each root is static-batched once it is built.
     public static class Scenery
     {
-        static Material kit, board;
+        static Material kit, kitFar, board;
+        static Texture2D atlas;
         static readonly Dictionary<string, (Vector2 centre, float radius)> footprints = new Dictionary<string, (Vector2, float)>();
 
-        static Material Kit => kit != null ? kit : kit = Palette.Textured(Resources.Load<Texture2D>(SceneryLayout.Dir + SceneryLayout.Atlas));
-        static Material Board => board != null ? board : board = Palette.Textured(Swatches());
+        // The pack's atlas, its olive grass swatch repainted in the meadow's green so hills and
+        // mountain tops sit in the same field as the board.
+        static Texture2D Atlas => atlas != null ? atlas : atlas = Palette.Recolor(Resources.Load<Texture2D>(SceneryLayout.Dir + SceneryLayout.Atlas), SceneryLayout.GrassCells, Palette.Field, 0.5f);
+        static Material Kit => kit != null ? kit : kit = Palette.Toon(Atlas, Color.white, ToonStyle.Prop);
+        static Material KitFar => kitFar != null ? kitFar : kitFar = Palette.Toon(Atlas, Color.white, ToonStyle.Far);
+        static Material Board => board != null ? board : board = Palette.Toon(Swatches(), Color.white, ToonStyle.Ground);
 
         public static void BuildBoard(TileMap map)
         {
@@ -88,8 +93,9 @@ namespace LLTacticalWar
 
         // ---------------- pieces ----------------
 
-        // A piece with its footprint centred on its spot: (X, Z) turned by `turn` about `origin`.
-        static void Put(Transform parent, Piece p, Vector3 origin, Quaternion turn, string colour, bool shadows = true)
+        // A piece with its footprint centred on its spot: (X, Z) turned by `turn` about `origin`. A far
+        // piece (the horizon, clouds, the battle's distant keep) casts no shadow and has no outline.
+        static void Put(Transform parent, Piece p, Vector3 origin, Quaternion turn, string colour, bool near = true)
         {
             string model = colour == null ? p.Model : p.Model.Replace("{team}", colour);
             var src = Resources.Load<GameObject>(SceneryLayout.Dir + model);
@@ -103,9 +109,9 @@ namespace LLTacticalWar
             foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
             {
                 var mats = new Material[r.GetComponent<MeshFilter>().sharedMesh.subMeshCount];
-                for (int i = 0; i < mats.Length; i++) mats[i] = Kit;
+                for (int i = 0; i < mats.Length; i++) mats[i] = near ? Kit : KitFar;
                 r.sharedMaterials = mats;
-                r.shadowCastingMode = shadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
+                r.shadowCastingMode = near ? ShadowCastingMode.On : ShadowCastingMode.Off;
             }
         }
 
@@ -234,10 +240,10 @@ namespace LLTacticalWar
 
         // A grass plot of cols x rows bevelled tiles from `origin` (its south-west corner, tile-top
         // level): each tile a soft dome of its checker shade, a chamfer down to the dark grooves that
-        // draw the grid, and an earthen bank from the plot's rim down to groundY.
+        // draw the grid, and an earthen bank sloping out from the plot's rim down to groundY.
         static void Plot(Transform parent, string name, int cols, int rows, Vector2 tile, Vector3 origin, float groundY, System.Random rng)
         {
-            const float top = 0.02f, floor = -0.07f, groove = 0.035f, bevel = 0.13f, bankRun = 0.1f;
+            const float top = 0.02f, floor = -0.07f, groove = 0.035f, bevel = 0.13f, bankRun = 0.45f;
             var b = new MeshBuilder();
             float w = cols * tile.x, d = rows * tile.y;
             for (int z = 0; z < rows; z++)

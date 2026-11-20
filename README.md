@@ -14,6 +14,9 @@ controller asset. The Dragoon rides the Horse from Quaternius's
 [Ultimate Animated Animals](https://quaternius.com/packs/ultimateanimatedanimals.html) (CC0,
 licence in `Assets/Resources/Quaternius/`), and its lance is code-built because no pack has one.
 The scene is `Assets/Scenes/Main.unity`, and one `GameManager` object boots the whole game.
+Everything draws with one toon shader (`Assets/Shaders/Toon.shader`): three light bands with cool
+blue-violet shadows, a warm rim on figures, and inverted-hull outlines drawn by the renderer's
+ToonOutlines feature.
 
 ## Controls
 
@@ -43,8 +46,9 @@ The scene is `Assets/Scenes/Main.unity`, and one `GameManager` object boots the 
 
 ```
 Assets/Scripts/
-  Core/     GameManager (shell + boot), Palette (art bible), AudioBank (synthesized audio),
-            Fx (pooled particles), Ease, GameInput, Prim
+  Core/     GameManager (shell + boot, lights, grade, camera lenses), Palette (art bible and
+            toon materials), AudioBank (synthesized audio), Fx (pooled particles), Ease, GameInput,
+            Prim, CloudShadows (the sun's drifting cookie), OutlineNormals (smoothed normals for outlines)
   Units/    BaseClass + the six classes, Stats, Weapons (the weapon table and the triangle),
             UnitLooks (each class's KayKit model, props, team swatches and clips),
             UnitFactory (builds figures), UnitModel (Playables animation), TeamSkin (team recolour)
@@ -52,5 +56,8 @@ Assets/Scripts/
             TurnStateStart / TurnStatePlayerTurn / TurnStateEnemyBot, Player, Scenery,
             Combat (pure forecast / resolve / apply), BattleScene (the 1v1 scene)
   UI/       GameUI (+ GameUI.Combat: forecast and battle HUD), MenuView, KeyMenu, HoverSelect
-  Editor/   ProjectSetup (menu: LL Tactical War > Run Setup), KayKitImport (pack import settings)
+  Editor/   ProjectSetup (menu: LL Tactical War > Run Setup: materials, shadows, SSAO, outlines),
+            KayKitImport / EnvironmentImport / QuaterniusImport (pack import settings),
+            OutlineNormalsImport (bakes outline normals on import)
+Assets/Shaders/  Toon (every surface), SkyGradient (the sky)
 ```

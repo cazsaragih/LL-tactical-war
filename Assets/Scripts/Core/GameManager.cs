@@ -31,7 +31,7 @@ namespace LLTacticalWar
         Transform boardCenter;
         PointerScript pointer;
         TileMap map;
-        float titleAngle = 200f;
+        float titleTime;
         static float baseTimeScale = 1f;
 
         public static void SetTimeScale(float s) { baseTimeScale = s; ApplyTimeScale(); }
@@ -86,35 +86,33 @@ namespace LLTacticalWar
 
         void SetupRendering()
         {
-            // key light: warm, from the south-west, angled across the board
-            var sun = new GameObject("Sun").AddComponent<Light>();
-            sun.transform.SetParent(transform, false);
-            sun.type = LightType.Directional;
-            sun.color = Palette.SunKey;
-            sun.intensity = 1.25f;
-            sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 0.82f;
-            sun.transform.rotation = Quaternion.Euler(44f, 38f, 0f);
+            // key: warm late-morning sun from the south-west, angled across the board, soft shadows,
+            // with slow cloud shadows drifting through it
+            var sun = NewLight("Sun", Palette.SunKey, 1.1f, Quaternion.Euler(44f, 38f, 0f), LightShadows.Soft);
+            sun.shadowStrength = 0.85f;
             RenderSettings.sun = sun;
+            CloudShadows.Attach(sun);
+            // fill: a cool, shadowless lift from the south-east, on the faces the map camera sees
+            NewLight("Fill", Palette.FillLight, 0.3f, Quaternion.Euler(28f, -42f, 0f), LightShadows.None);
 
             // the ambient answer: cool sky, neutral equator, dark warm ground
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.ambientSkyColor = Palette.AmbientSky;
             RenderSettings.ambientEquatorColor = Palette.AmbientEq;
             RenderSettings.ambientGroundColor = Palette.AmbientGnd;
-            RenderSettings.skybox = null;
+            // the gradient sky's horizon is the fog colour, so the far world dissolves into blue-grey haze
+            RenderSettings.skybox = Palette.Sky();
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogColor = Palette.SkyHorizon;
-            RenderSettings.fogStartDistance = 55f;
-            RenderSettings.fogEndDistance = 190f;
+            RenderSettings.fogColor = Palette.Haze;
+            RenderSettings.fogStartDistance = 40f;
+            RenderSettings.fogEndDistance = 175f;
 
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
             camGo.transform.SetParent(transform, false);
             cam = camGo.AddComponent<Camera>();
-            cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = Palette.SkyTop;
+            cam.clearFlags = CameraClearFlags.Skybox;
             cam.fieldOfView = 40f;
             cam.farClipPlane = 400f;
             cam.allowHDR = true;
@@ -125,47 +123,85 @@ namespace LLTacticalWar
             brain = camGo.AddComponent<CinemachineBrain>();
             brain.DefaultBlend = new CinemachineBlendDefinition(CinemachineBlendDefinition.Styles.EaseInOut, 0.9f);
 
-            // one global volume
+            // one global volume: the grade. Depth of field rides each camera (see Lens).
             var volGo = new GameObject("GlobalVolume");
             volGo.transform.SetParent(transform, false);
             var vol = volGo.AddComponent<Volume>();
             vol.isGlobal = true;
             var profile = ScriptableObject.CreateInstance<VolumeProfile>();
-            var tone = profile.Add<Tonemapping>(true);
-            tone.mode.Override(TonemappingMode.ACES);
-            var bloom = profile.Add<Bloom>(true);
-            bloom.intensity.Override(0.35f);
-            bloom.threshold.Override(1.1f);
+            profile.Add<Tonemapping>(true).mode.Override(TonemappingMode.ACES);
+            var bloom = profile.Add<Bloom>(true);   // true highlights only: the glow gem, sparks, flashes
+            bloom.intensity.Override(0.3f);
+            bloom.threshold.Override(1.05f);
+            bloom.scatter.Override(0.6f);
             bloom.tint.Override(Palette.SunKey);
             var vig = profile.Add<Vignette>(true);
-            vig.intensity.Override(0.22f);
+            vig.intensity.Override(0.2f);
+            vig.smoothness.Override(0.45f);
             vig.color.Override(Palette.Ink);
             var adj = profile.Add<ColorAdjustments>(true);
-            adj.saturation.Override(10f);
-            adj.contrast.Override(6f);
-            adj.postExposure.Override(0.15f);
-            var wb = profile.Add<WhiteBalance>(true);
-            wb.temperature.Override(6f);
+            adj.saturation.Override(8f);
+            adj.contrast.Override(8f);
+            adj.postExposure.Override(0f);
+            profile.Add<WhiteBalance>(true).temperature.Override(4f);
+            var split = profile.Add<SplitToning>(true);   // warm highlights, cool shadows
+            split.shadows.Override(Palette.GradeShadows);
+            split.highlights.Override(Palette.GradeHighlights);
+            split.balance.Override(-10f);
             vol.sharedProfile = profile;
         }
+
+        Light NewLight(string name, Color color, float intensity, Quaternion rotation, LightShadows shadows)
+        {
+            var light = new GameObject(name).AddComponent<Light>();
+            light.transform.SetParent(transform, false);
+            light.transform.rotation = rotation;
+            light.type = LightType.Directional;
+            light.color = color;
+            light.intensity = intensity;
+            light.shadows = shadows;
+            return light;
+        }
+
+        // Depth of field for one camera, through Cinemachine so it blends across camera cuts and
+        // tracks its focus every frame. Bokeh, so near and far both soften: the map reads like a
+        // photographed miniature while the rows round the cursor stay sharp. Strength is
+        // focalLength (mm) over aperture (f-stop); see URP's Bokeh CoC: blur px = 14 * (1 - focus / depth) * maxCoC.
+        public static void Lens(CinemachineCamera vcam, float focalLength, float aperture, CinemachineVolumeSettings.FocusTrackingMode focus, Transform target = null)
+        {
+            var profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            var dof = profile.Add<DepthOfField>(true);
+            dof.mode.Override(DepthOfFieldMode.Bokeh);
+            dof.focusDistance.Override(10f);
+            dof.focalLength.Override(focalLength);
+            dof.aperture.Override(aperture);
+            var settings = vcam.gameObject.AddComponent<CinemachineVolumeSettings>();
+            settings.Profile = profile;
+            settings.FocusTracking = focus;
+            settings.FocusTarget = target;
+        }
+
+        // The map camera: high and far enough that the board's full width fits and an edge unit
+        // isn't oversized, steep enough that obstacles hide no figure (verify.sh sightlines).
+        public static readonly Vector3 MapOffset = new Vector3(0f, 24.5f, -17f);
 
         void BuildCameras()
         {
             // tactics: looks down at the board, follows the cursor with damping
             tacticCam = new GameObject("CM_Tactic").AddComponent<CinemachineCamera>();
             tacticCam.transform.SetParent(TacticRoot, false);
-            // narrow lens from further back: less edge distortion on the figures
-            tacticCam.transform.rotation = Quaternion.Euler(54f, 0f, 0f);
+            tacticCam.transform.rotation = Quaternion.LookRotation(-MapOffset);
             tacticCam.Lens.FieldOfView = 30f;
             tacticCam.Lens.FarClipPlane = 400f;
             var follow = tacticCam.gameObject.AddComponent<CinemachineFollow>();
-            follow.FollowOffset = new Vector3(0f, 21f, -15.2f);
+            follow.FollowOffset = MapOffset;
             follow.TrackerSettings.BindingMode = BindingMode.WorldSpace;
             follow.TrackerSettings.PositionDamping = new Vector3(0.45f, 0.45f, 0.45f);
             tacticCam.Follow = pointer.transform;
             tacticCam.Priority = 10;
+            Lens(tacticCam, 300f, 3.2f, CinemachineVolumeSettings.FocusTrackingMode.FollowTarget);
 
-            // title backdrop: a slow orbit of the live board
+            // title backdrop: a slow orbit of the live board, the board in soft miniature focus
             titleCam = new GameObject("CM_Title").AddComponent<CinemachineCamera>();
             titleCam.transform.SetParent(TacticRoot, false);
             titleCam.Lens.FieldOfView = 40f;
@@ -174,14 +210,18 @@ namespace LLTacticalWar
             aim.Composition.ScreenPosition = new Vector2(0.12f, -0.05f);
             titleCam.LookAt = boardCenter;
             titleCam.Priority = 50;
+            Lens(titleCam, 300f, 4f, CinemachineVolumeSettings.FocusTrackingMode.LookAtTarget);
             UpdateTitleCam(0f);
         }
 
         void UpdateTitleCam(float dt)
         {
-            titleAngle += dt * 5f;
-            float a = titleAngle * Mathf.Deg2Rad;
-            titleCam.transform.position = map.Center + new Vector3(Mathf.Sin(a) * 34f, 13f, Mathf.Cos(a) * 34f);   // low enough to see the horizon past the castles
+            // A slow swing over the open east meadow, the board side-on with a camp at each end: a full
+            // orbit passes over the camps, where a tower or the keep fills the frame. Low enough to see
+            // the horizon past the castles.
+            titleTime += dt;
+            float a = (90f + 30f * Mathf.Sin(titleTime * 0.08f)) * Mathf.Deg2Rad;
+            titleCam.transform.position = map.Center + new Vector3(Mathf.Sin(a) * 46f, 15f, Mathf.Cos(a) * 46f);
         }
 
         void Update()

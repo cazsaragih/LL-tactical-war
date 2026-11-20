@@ -32,7 +32,7 @@ namespace LLTacticalWar
             public bool left, down;
             public int hp;
             public Vector3 Forward => left ? Vector3.right : Vector3.left;
-            public float Reach => unit.playerClass.Mounted ? 0.975f : 0.525f;   // body ahead of its root: a horse's head reaches past its rider
+            public float Reach => UnitLooks.Of(unit.playerClass).Mount?.Reach ?? 0.525f;   // body ahead of its root: a horse's head reaches past its rider
             public Vector3 Chest => t.position + Vector3.up * (0.9f + model.Lift);
             public Vector3 Head => t.position + Vector3.up * (2.0f + model.Lift);
         }
@@ -41,7 +41,7 @@ namespace LLTacticalWar
         static readonly Vector3 CamLook = new Vector3(0f, 0.8f, 0f);
         const float CamFov = 33f;
 
-        Transform root, arrow, bolt;
+        Transform root, arrow, bolt, focus;
         Action<Team> showKeep;
         CinemachineCamera cam;
         Actor left, right;
@@ -59,6 +59,9 @@ namespace LLTacticalWar
             cam.transform.SetParent(root, false);
             cam.Lens.FarClipPlane = 400f;
             cam.Priority = 0;
+            // shallow depth of field on the pair: both actors sharp, the backdrop soft
+            focus = Prim.Pivot("Focus", root, Vector3.up);
+            GameManager.Lens(cam, 135f, 2.2f, CinemachineVolumeSettings.FocusTrackingMode.CustomTarget, focus);
             arrow = BuildArrow();
             bolt = BuildBolt();
             PoseCamera(0f);
@@ -174,6 +177,7 @@ namespace LLTacticalWar
             right = Spawn(playerAttacks ? f.defender.unit : f.attacker.unit, half, false);
             var att = playerAttacks ? left : right;
             var def = playerAttacks ? right : left;
+            focus.localPosition = (left.home + right.home) / 2f + Vector3.up;
 
             camPos = CamHome; camLook = CamLook; camFov = CamFov;
             PoseCamera(0f);

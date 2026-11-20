@@ -48,8 +48,9 @@ namespace LLTacticalWar
     public static class SceneryLayout
     {
         public const string Dir = "KayKit/Environment/", Atlas = "hexagons_medieval";
+        public static readonly Vector2Int[] GrassCells = { new Vector2Int(0, 2) };   // the atlas's olive grass: hill and mountain tops
         public const float ImportScale = 1f;   // the pack's hex is 2 units across, a board tile's size
-        public const float GroundY = -0.45f;   // the meadow around the board, whose tile tops sit at 0
+        public const float GroundY = -0.75f;   // the meadow around the board, whose tile tops sit at 0: a bank that reads from the map camera
         public const float StageGroundY = -0.9f;
         public const int SurfaceSeed = 3;        // which shade each board tile takes
 
@@ -104,7 +105,8 @@ namespace LLTacticalWar
             P("building_church_{team}", 9.5f, -28f, 190f, Life),
             P("building_home_A_{team}", 5.5f, -30f, 170f, Life),
             P("building_windmill_{team}", -20f, -26f, 150f, Life),
-            // the field camp between the wall and the board: buildings, then tents, then low kit nearest
+            // the field camp between the wall and the board: buildings, then tents, the camp's kit
+            // gathered by the building it serves, and its banners along the edge of the field
             P("building_barracks_{team}", -9.4f, -17.6f, 180f, Life),
             P("building_archeryrange_{team}", 9.8f, -17.8f, 180f, Life),
             P("building_well_{team}", 0.3f, -17.6f, 180f, Life),
@@ -112,24 +114,27 @@ namespace LLTacticalWar
             P("tent", -2.1f, -15.2f, -8f, Life),
             P("tent", 2.6f, -15.4f, 4f, Life),
             P("tent", 5.2f, -15.8f, -12f, Life),
-            P("weaponrack", -6.6f, -12.4f, 20f, Life),
-            P("barrel", -3.4f, -12.6f, 0f, Life),
-            P("barrel", -2.9f, -13.1f, 30f, Life),
-            P("crate_A_big", 3.8f, -12.7f, 15f, Life),
-            P("crate_B_small", 4.3f, -12.2f, 40f, Life),
-            P("sack", 2.2f, -12.4f, 70f, Life),
-            P("resource_lumber", -12f, -13.4f, 80f, Life),
-            P("wheelbarrow", -10.8f, -12.6f, 120f, Life),
-            P("target", 12f, -13f, 180f, Life),
-            P("target", 13.5f, -13.6f, 200f, Life),
-            P("bucket_arrows", 10.9f, -12.6f, 0f, Life),
-            // banners along the edge, watchtowers on the corners
+            // the armoury beside the barracks
+            P("weaponrack", -13.6f, -16.4f, 90f, Life),
+            P("resource_lumber", -13.8f, -18.6f, 0f, Life),
+            P("wheelbarrow", -12.4f, -19.6f, 150f, Life),
+            // stores beside the well
+            P("barrel", 2.3f, -17.9f, 0f, Life),
+            P("barrel", 2.9f, -18.5f, 30f, Life),
+            P("crate_A_big", -1.9f, -18.2f, 15f, Life),
+            P("crate_B_small", -1.6f, -17.3f, 40f, Life),
+            P("sack", -2.6f, -17.4f, 70f, Life),
+            // butts beside the archery range
+            P("target", 13.6f, -15.4f, 180f, Life),
+            P("target", 13.6f, -17.2f, 180f, Life),
+            P("bucket_arrows", 12.6f, -16.3f, 0f, Life),
+            // banners along the edge, watchtowers beside the corners
             P("flag_{team}", -12f, -10.9f, 90f, Life),
             P("flag_{team}", -6f, -10.9f, 90f, Life),
             P("flag_{team}", 6f, -10.9f, 90f, Life),
             P("flag_{team}", 12f, -10.9f, 90f, Life),
-            P("building_tower_A_{team}", -16.8f, -11.8f, 135f, Life),
-            P("building_tower_A_{team}", 16.8f, -11.8f, 225f, Life),
+            P("building_tower_A_{team}", -17.6f, -12.2f, 135f, 2.2f),
+            P("building_tower_A_{team}", 17.6f, -12.2f, 225f, 2.2f),
             // the field's dry-stone side walls, this side's half, open in the middle
             P("fence_stone_straight", -15.6f, -8.56f, 0f, Life),
             P("fence_stone_straight", -15.6f, -5.69f, 0f, Life),
@@ -141,7 +146,8 @@ namespace LLTacticalWar
 
         static readonly string[] TreeClumps = { "trees_A_large", "trees_B_large", "trees_A_medium", "trees_B_medium" };
         // The pack's hills stand on earthen cliffs; sunk by HillSink only their wooded tops show.
-        static readonly string[] Hills = { "hills_B_trees", "hills_C_trees" };
+        // hills_C's cliff rises to 0.55, past any sink that keeps its trees, so only hills_B is used.
+        static readonly string[] Hills = { "hills_B_trees" };
         const float HillSink = 0.2f;
         static readonly string[] Rocks = { "rock_single_A", "rock_single_B", "rock_single_C", "rock_single_D", "rock_single_E" };
 
@@ -163,8 +169,9 @@ namespace LLTacticalWar
         static readonly string[] Mountains = { "mountain_A_grass_trees", "mountain_B_grass_trees", "mountain_C_grass_trees", "mountain_B_grass", "mountain_C" };
         static readonly string[] CloudModels = { "cloud_big", "cloud_small" };
 
-        // Around the board centre: mountains on the horizon, and the clouds that drift above it.
-        public static readonly Ring Horizon = new Ring(Mountains, V(0f, 360f), V(62f, 88f), V(0f, 0f), V(5f, 7.5f), 22, 5);
+        // Around the board centre: mountains on the horizon, and the clouds that drift above it. The
+        // mountains stay under 15 m so the title's orbit (46 m out, 15 m up) frames their peaks.
+        public static readonly Ring Horizon = new Ring(Mountains, V(0f, 360f), V(66f, 92f), V(0f, 0f), V(4f, 6f), 22, 5);
         public static readonly Ring Clouds = new Ring(CloudModels, V(0f, 360f), V(45f, 90f), V(7f, 13f), V(3f, 5f), 12, 9);
         public const float CloudDrift = 0.6f;   // degrees a second about the centre
 

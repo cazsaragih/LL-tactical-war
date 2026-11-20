@@ -41,17 +41,12 @@ namespace LLTacticalWar.EditorTools
         public static void CreateMaterials()
         {
             Directory.CreateDirectory(MatDir);
-            var def = GraphicsSettings.currentRenderPipeline != null ? GraphicsSettings.currentRenderPipeline.defaultMaterial : null;
-            var litShader = def != null ? def.shader : Shader.Find("Universal Render Pipeline/Lit");
-            if (litShader == null) { Debug.LogError("[ProjectSetup] URP Lit shader not found."); return; }
-
-            var lit = new Material(litShader) { name = "BaseLit" };
-            lit.SetFloat("_Smoothness", 0.12f);
-            lit.SetFloat("_EnvironmentReflections", 0f);
-            Save(lit, "BaseLit");
-
+            var toon = Shader.Find("LLTacticalWar/Toon");
+            var sky = Shader.Find("LLTacticalWar/SkyGradient");
             var sprite = Shader.Find("Sprites/Default");
-            if (sprite == null) { Debug.LogError("[ProjectSetup] Sprites/Default shader not found."); return; }
+            if (toon == null || sky == null || sprite == null) { Debug.LogError("[ProjectSetup] a shader is missing: Toon, SkyGradient or Sprites/Default."); return; }
+            Save(new Material(toon) { name = "Toon" }, "Toon");
+            Save(new Material(sky) { name = "Sky" }, "Sky");
             Save(new Material(sprite) { name = "Overlay" }, "Overlay");
             Save(new Material(sprite) { name = "Particle" }, "Particle");
             AssetDatabase.SaveAssets();
@@ -65,24 +60,60 @@ namespace LLTacticalWar.EditorTools
             else AssetDatabase.CreateAsset(m, path);
         }
 
+        // Shadows sized to the map camera: it sees the ground from about 26 to 38 m, so the second
+        // cascade spans 12.6-39 m and holds the whole view; the battle camera's actors, 9-10 m off,
+        // sit in the first. SSAO stays subtle (contact darkening under figures and props) at half
+        // resolution. Every renderer draws the toon outlines (Toon.shader's "Outline" pass) in one
+        // sweep after the opaques.
         public static void ConfigurePipeline()
         {
-            var names = QualitySettings.names;
-            for (int i = 0; i < names.Length; i++)
+            var assets = Enumerable.Range(0, QualitySettings.names.Length).Select(QualitySettings.GetRenderPipelineAssetAt)
+                .Append(GraphicsSettings.defaultRenderPipeline).OfType<UniversalRenderPipelineAsset>().Distinct();
+            foreach (var asset in assets)
             {
-                var asset = QualitySettings.GetRenderPipelineAssetAt(i) as UniversalRenderPipelineAsset;
-                if (asset == null) continue;
-                asset.shadowDistance = 90f;
+                asset.shadowDistance = 70f;
+                if (asset.shadowCascadeCount == 4) asset.cascade4Split = new Vector3(0.18f, 0.56f, 0.8f);   // the PC tier; Mobile keeps one cascade
                 asset.supportsHDR = true;
                 EditorUtility.SetDirty(asset);
-            }
-            if (GraphicsSettings.defaultRenderPipeline is UniversalRenderPipelineAsset d)
-            {
-                d.shadowDistance = 90f;
-                d.supportsHDR = true;
-                EditorUtility.SetDirty(d);
+                var renderers = new SerializedObject(asset).FindProperty("m_RendererDataList");
+                for (int i = 0; i < renderers.arraySize; i++)
+                {
+                    if (!(renderers.GetArrayElementAtIndex(i).objectReferenceValue is ScriptableRendererData data)) continue;
+                    AddOutlines(data);
+                    foreach (var feature in data.rendererFeatures.Where(f => f != null && f.GetType().Name == "ScreenSpaceAmbientOcclusion"))
+                    {
+                        var ao = new SerializedObject(feature);
+                        ao.FindProperty("m_Settings.Intensity").floatValue = 0.6f;
+                        ao.FindProperty("m_Settings.Radius").floatValue = 0.35f;
+                        ao.FindProperty("m_Settings.DirectLightingStrength").floatValue = 0.3f;
+                        ao.FindProperty("m_Settings.Downsample").boolValue = true;
+                        ao.ApplyModifiedPropertiesWithoutUndo();
+                        EditorUtility.SetDirty(feature);
+                    }
+                }
             }
             AssetDatabase.SaveAssets();
+        }
+
+        static void AddOutlines(ScriptableRendererData data)
+        {
+            if (data.rendererFeatures.Any(f => f is RenderObjects && f.name == "ToonOutlines")) return;
+            var outlines = ScriptableObject.CreateInstance<RenderObjects>();
+            outlines.name = "ToonOutlines";
+            outlines.settings.passTag = "ToonOutlines";
+            outlines.settings.Event = RenderPassEvent.AfterRenderingOpaques;
+            outlines.settings.filterSettings = new RenderObjects.FilterSettings { RenderQueueType = RenderQueueType.Opaque, LayerMask = ~0, PassNames = new[] { "Outline" } };
+            AssetDatabase.AddObjectToAsset(outlines, data);
+            AssetDatabase.TryGetGUIDAndLocalFileIdentifier(outlines, out _, out long localId);
+            var so = new SerializedObject(data);
+            var features = so.FindProperty("m_RendererFeatures");
+            var map = so.FindProperty("m_RendererFeatureMap");
+            features.arraySize++;
+            features.GetArrayElementAtIndex(features.arraySize - 1).objectReferenceValue = outlines;
+            map.arraySize++;
+            map.GetArrayElementAtIndex(map.arraySize - 1).longValue = localId;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(data);
         }
 
         public static void CreateMainScene()

@@ -12,8 +12,10 @@ namespace LLTacticalWar
         {
             if (meshes.TryGetValue(type, out var m) && m != null) return m;
             var tmp = GameObject.CreatePrimitive(type);
-            m = tmp.GetComponent<MeshFilter>().sharedMesh;
+            m = Object.Instantiate(tmp.GetComponent<MeshFilter>().sharedMesh);
+            m.name = type.ToString();
             Object.DestroyImmediate(tmp);
+            OutlineNormals.Bake(m);   // a closed outline hull round the cube's hard edges
             meshes[type] = m;
             return m;
         }

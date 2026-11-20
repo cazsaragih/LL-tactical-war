@@ -116,8 +116,8 @@ namespace LLTacticalWar
             ApplyTint(0f);
         }
 
-        // Dimmed, fallen or flashing. Flat parts flash by their base colour, atlas-textured
-        // parts by emission (only they carry the keyword).
+        // Dimmed, fallen or flashing: the toon shader multiplies _BaseColor and adds _EmissionColor
+        // on every part, flat or atlas-textured.
         void ApplyTint(float flash)
         {
             if (mpb == null) return;

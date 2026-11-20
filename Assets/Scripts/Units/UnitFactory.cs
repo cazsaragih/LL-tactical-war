@@ -40,6 +40,7 @@ namespace LLTacticalWar
                 BuildLance(Bone(body.transform, "handslot.r"), team);
             }
             else BuildBanner(model, Bone(body.transform, "chest"), team);
+            if (look.Crest is Vector3 crest) BuildCrest(Bone(body.transform, "head"), crest, team);
             model.Init(look, body.GetComponent<Animator>(), mount);
             return model;
         }
@@ -110,6 +111,13 @@ namespace LLTacticalWar
             Prim.Part("Vamplate", PrimitiveType.Cylinder, hand, new Vector3(0, 0.14f, 0), new Vector3(0.2f, 0.06f, 0.2f), Palette.Steel);
             Prim.Part("Tip", PrimitiveType.Sphere, hand, new Vector3(0, 2.22f, 0), new Vector3(0.1f, 0.36f, 0.1f), Palette.Steel);
             Prim.Part("Pennant", PrimitiveType.Cube, hand, new Vector3(0, 1.86f, 0.12f), new Vector3(0.02f, 0.16f, 0.22f), Palette.Team(team));
+        }
+
+        // A plume on the helmet's crown, leaning back, in the team colour: it reads from the front,
+        // from the side in a battle and from above on the map.
+        static void BuildCrest(Transform head, Vector3 at, Team team)
+        {
+            Prim.Part("Crest", PrimitiveType.Sphere, head, at + new Vector3(0f, 0.17f, -0.1f), new Vector3(0.2f, 0.5f, 0.26f), Palette.Team(team), new Vector3(-22f, 0f, 0f));
         }
 
         // The team banner a foot unit wears on its back, riding the chest bone: a tall pole that
