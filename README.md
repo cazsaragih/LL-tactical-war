@@ -18,6 +18,12 @@ Everything draws with one toon shader (`Assets/Shaders/Toon.shader`): three ligh
 blue-violet shadows, a warm rim on figures, and inverted-hull outlines drawn by the renderer's
 ToonOutlines feature.
 
+
+https://github.com/user-attachments/assets/c519ccc2-01d9-4143-9078-f4a7826f51a2
+
+
+
+
 ## Controls
 
 | Where | Keys |
