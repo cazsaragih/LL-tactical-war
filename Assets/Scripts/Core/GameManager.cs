@@ -86,16 +86,16 @@ namespace LLTacticalWar
 
         void SetupRendering()
         {
-            // key: warm late-morning sun from the south-west, angled across the board, soft shadows,
-            // with slow cloud shadows drifting through it
+            // key: warm late-morning sun from the south-west, angled across the board, with slow cloud
+            // shadows drifting through it. The only light: the toon shader's shadow tone stands in for
+            // fill and bounce. Its shadows are filtered soft at full strength so the shader can cut the
+            // penumbra at its middle into a clean, hard edge.
             var sun = NewLight("Sun", Palette.SunKey, 1.1f, Quaternion.Euler(44f, 38f, 0f), LightShadows.Soft);
-            sun.shadowStrength = 0.85f;
+            sun.shadowStrength = 1f;
             RenderSettings.sun = sun;
             CloudShadows.Attach(sun);
-            // fill: a cool, shadowless lift from the south-east, on the faces the map camera sees
-            NewLight("Fill", Palette.FillLight, 0.3f, Quaternion.Euler(28f, -42f, 0f), LightShadows.None);
 
-            // the ambient answer: cool sky, neutral equator, dark warm ground
+            // the ambient answer: cool sky (the toon shader's flat lift on the lit tone reads its zenith)
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.ambientSkyColor = Palette.AmbientSky;
             RenderSettings.ambientEquatorColor = Palette.AmbientEq;
@@ -129,10 +129,10 @@ namespace LLTacticalWar
             vol.isGlobal = true;
             var profile = ScriptableObject.CreateInstance<VolumeProfile>();
             profile.Add<Tonemapping>(true).mode.Override(TonemappingMode.ACES);
-            var bloom = profile.Add<Bloom>(true);   // true highlights only: the glow gem, sparks, flashes
-            bloom.intensity.Override(0.3f);
-            bloom.threshold.Override(1.05f);
-            bloom.scatter.Override(0.6f);
+            var bloom = profile.Add<Bloom>(true);   // true highlights only: the glow gem, sparks, flashes; tight, so cel edges stay sharp
+            bloom.intensity.Override(0.2f);
+            bloom.threshold.Override(1.1f);
+            bloom.scatter.Override(0.5f);
             bloom.tint.Override(Palette.SunKey);
             var vig = profile.Add<Vignette>(true);
             vig.intensity.Override(0.2f);
@@ -169,8 +169,8 @@ namespace LLTacticalWar
         }
 
         // Depth of field for one camera, through Cinemachine so it blends across camera cuts and
-        // tracks its focus every frame. Bokeh, so near and far both soften: the map reads like a
-        // photographed miniature while the rows round the cursor stay sharp. Strength is
+        // tracks its focus every frame. Bokeh, so near and far both soften: the title's orbit reads like a
+        // photographed miniature, and the duel's backdrop falls back behind its two actors. Strength is
         // focalLength (mm) over aperture (f-stop); see URP's Bokeh CoC: blur px = 14 * (1 - focus / depth) * maxCoC.
         public static void Lens(CinemachineCamera vcam, float focalLength, float aperture, CinemachineVolumeSettings.FocusTrackingMode focus, Transform target = null)
         {
@@ -207,10 +207,9 @@ namespace LLTacticalWar
             follow.TrackerSettings.PositionDamping = new Vector3(0.45f, 0.45f, 0.45f);
             tacticCam.Follow = mapFocus;
             tacticCam.Priority = 10;
-            // the miniature's focus stays on the pin, wherever the framing sits
-            Lens(tacticCam, 300f, 3.2f, CinemachineVolumeSettings.FocusTrackingMode.CustomTarget, pointer.transform);
+            // no depth of field on the map: every row, the enemy's far one included, keeps crisp cel edges
 
-            // title backdrop: a slow orbit of the live board, the board in soft miniature focus
+            // title backdrop: a slow orbit of the live board, in light miniature focus
             titleCam = new GameObject("CM_Title").AddComponent<CinemachineCamera>();
             titleCam.transform.SetParent(TacticRoot, false);
             titleCam.Lens.FieldOfView = 40f;
@@ -219,7 +218,7 @@ namespace LLTacticalWar
             aim.Composition.ScreenPosition = new Vector2(0.12f, -0.05f);
             titleCam.LookAt = boardCenter;
             titleCam.Priority = 50;
-            Lens(titleCam, 300f, 4f, CinemachineVolumeSettings.FocusTrackingMode.LookAtTarget);
+            Lens(titleCam, 300f, 8f, CinemachineVolumeSettings.FocusTrackingMode.LookAtTarget);
             UpdateTitleCam(0f);
         }
 

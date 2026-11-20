@@ -29,17 +29,16 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _BandSoft: 0.03
-    - _LitEdge: 0.58
-    - _MidLevel: 0.55
-    - _OutlineDarken: 0.35
-    - _OutlineMinScale: 0.4
-    - _OutlineNear: 28
-    - _OutlineWidth: 2
+    - _OutlineDarken: 0.3
+    - _OutlineMinScale: 0.45
+    - _OutlineNear: 30
+    - _OutlineWidth: 3
     - _RimStrength: 0
-    - _RimWidth: 0.34
-    - _ShadeEdge: 0.36
+    - _RimWidth: 0.3
     - _SkyBounce: 0.3
+    - _SpecEdge: 0.95
+    - _SpecStrength: 0
+    - _Terminator: 0.05
     m_Colors:
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}

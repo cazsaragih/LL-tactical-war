@@ -9,7 +9,7 @@ namespace LLTacticalWar
     // Builds the world from SceneryLayout: the board's bevelled grass tiles on an earthen bank, the
     // KayKit trees and rocks on its obstacle tiles, both camps and their wilds, mountains and drifting
     // clouds; and the 1v1 stage with its backdrop. Every KayKit piece draws in toon on the pack's
-    // atlas (outlined near the board, plain on the horizon), the tiles and the meadow in soft toon on
+    // atlas (outlined near the board, plain on the horizon), the tiles and the meadow in unlined toon on
     // the Palette's board swatches, and each root is static-batched once it is built.
     public static class Scenery
     {

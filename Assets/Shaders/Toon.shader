@@ -1,11 +1,14 @@
-// The game's one surface shader: every figure, prop, building and the board draw with it.
-// Light comes in three bands (lit, half, shadow) with soft edges; the shadow band takes the
-// palette's cool tint instead of black, and cast shadows, cloud-shadow cookies and SSAO fall into
-// the same bands. Figures add a thin warm rim. A second pass draws the inverted-hull outline in a
-// darkened copy of the surface's own colour, about 2 px wide up close and thinner with distance.
-// Its LightMode is "Outline", which URP's opaque pass skips: the renderer's ToonOutlines feature
-// (ProjectSetup) draws every outline in one sweep after the opaques, so the two passes don't
-// alternate per object. Materials that should have none disable the "Outline" pass.
+// The game's one surface shader: every figure, prop, building and the board draw with it, cel-shaded.
+// Light takes two flat tones. Lit is the sun plus a flat sky lift; shadow is the palette's cool tone,
+// never black or grey. The terminator, a cast shadow's edge and a cloud shadow's edge are each a step
+// one pixel wide (fwidth), hard but anti-aliased: the soft shadow map's penumbra (and the soft cloud
+// cookie) is cut at its middle, so a cast shadow gets a clean rounded edge and the same tone as the
+// surface's own shadow side. Styles add a small stepped highlight on grey and white texels (steel, linen, never skin or team
+// cloth) and a stepped warm rim on the sunward silhouette. A second pass draws the inverted-hull outline
+// in a dark tone of the surface's own colour, about 3 px wide up close and thinner with distance. Its
+// LightMode is "Outline", which URP's opaque pass skips: the renderer's ToonOutlines feature
+// (ProjectSetup) draws every outline in one sweep after the opaques, so the two passes don't alternate
+// per object. Materials that should have none disable the "Outline" pass.
 //
 // Meshes from the import postprocessors carry their smoothed normal in TANGENT with w = 0, so the
 // hull stays closed across hard edges. Any other mesh pushes its hull along its own normal.
@@ -17,21 +20,21 @@ Shader "LLTacticalWar/Toon"
         [MainColor] _BaseColor ("Colour", Color) = (1, 1, 1, 1)
         [HDR] _EmissionColor ("Emission (hit flash, dimming lift, glow)", Color) = (0, 0, 0, 1)
 
-        _ShadeColor ("Shadow band light", Color) = (0.42, 0.45, 0.66, 1)
-        _MidLevel ("Half band, from shadow to lit", Range(0, 1)) = 0.55
-        _LitEdge ("Lit band starts at", Range(0, 1)) = 0.58
-        _ShadeEdge ("Half band starts at", Range(0, 1)) = 0.36
-        _BandSoft ("Band edge softness", Range(0.001, 0.5)) = 0.03
-        _SkyBounce ("Sky bounce (ambient probe)", Range(0, 2)) = 0.3
+        _ShadeColor ("Shadow tone light", Color) = (0.42, 0.45, 0.66, 1)
+        _Terminator ("Lit where N.L is above", Range(-0.5, 0.5)) = 0.05
+        _SkyBounce ("Flat sky lift on the lit tone", Range(0, 1)) = 0.3
+
+        _SpecStrength ("Highlight strength", Range(0, 2)) = 0
+        _SpecEdge ("Highlight where N.H is above (smaller spot nearer 1)", Range(0.8, 1)) = 0.95
 
         _RimColor ("Rim colour", Color) = (1, 0.81, 0.54, 1)
         _RimStrength ("Rim strength", Range(0, 2)) = 0
-        _RimWidth ("Rim width", Range(0.01, 1)) = 0.34
+        _RimWidth ("Rim width (fresnel)", Range(0.01, 1)) = 0.3
 
-        _OutlineWidth ("Outline width, px at 1080p up close", Range(0, 6)) = 2
-        _OutlineNear ("Outline keeps full width within (m)", Float) = 28
-        _OutlineMinScale ("Outline: thinnest share of full width", Range(0, 1)) = 0.4
-        _OutlineDarken ("Outline: own colour times", Range(0, 1)) = 0.35
+        _OutlineWidth ("Outline width, px at 1080p up close", Range(0, 6)) = 3
+        _OutlineNear ("Outline keeps full width within (m)", Float) = 30
+        _OutlineMinScale ("Outline: thinnest share of full width", Range(0, 1)) = 0.45
+        _OutlineDarken ("Outline: own colour times", Range(0, 1)) = 0.3
     }
 
     SubShader
@@ -44,7 +47,7 @@ Shader "LLTacticalWar/Toon"
         CBUFFER_START(UnityPerMaterial)
             float4 _BaseMap_ST;
             half4 _BaseColor, _EmissionColor, _ShadeColor, _RimColor;
-            half _MidLevel, _LitEdge, _ShadeEdge, _BandSoft, _SkyBounce, _RimStrength, _RimWidth;
+            half _Terminator, _SkyBounce, _SpecStrength, _SpecEdge, _RimStrength, _RimWidth;
             float _OutlineWidth, _OutlineNear, _OutlineMinScale, _OutlineDarken;
         CBUFFER_END
 
@@ -71,11 +74,9 @@ Shader "LLTacticalWar/Toon"
             #pragma fragment ToonFrag
 
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
-            #pragma multi_compile _ _ADDITIONAL_LIGHTS
             #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_fragment _ _SHADOWS_SOFT
             #pragma multi_compile_fragment _ _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
-            #pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
             #pragma multi_compile_fragment _ _LIGHT_COOKIES
             #pragma multi_compile_fog
 
@@ -96,6 +97,8 @@ Shader "LLTacticalWar/Toon"
                 half3 normalWS : TEXCOORD2;
             };
 
+            half _CloudShade;   // global (CloudShadows): the share of sunlight under a cloud
+
             Varyings ToonVert(Attributes v)
             {
                 Varyings o;
@@ -107,60 +110,40 @@ Shader "LLTacticalWar/Toon"
                 return o;
             }
 
-            // h runs 0..1 (half-lambert times cast shadow); the result is the light on the surface.
-            half3 Bands(half h, half3 shade, half3 lit)
+            // 0 below edge, 1 above it, the change spread over one pixel: hard, but never stair-stepped
+            half CelStep(half edge, half x)
             {
-                half toHalf = smoothstep(_ShadeEdge - _BandSoft, _ShadeEdge + _BandSoft, h);
-                half toLit = smoothstep(_LitEdge - _BandSoft, _LitEdge + _BandSoft, h);
-                half3 mid = lerp(shade, lit, _MidLevel);
-                return lerp(lerp(shade, mid, toHalf), lit, toLit);
+                return saturate((x - edge) / max(fwidth(x), 1e-4) + 0.5);
             }
 
             half4 ToonFrag(Varyings i) : SV_Target
             {
                 half3 albedo = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, i.uv).rgb * _BaseColor.rgb;
                 float3 n = normalize(i.normalWS);
+                float3 view = GetWorldSpaceNormalizeViewDir(i.positionWS);
 
-                InputData inputData = (InputData)0;
-                inputData.positionWS = i.positionWS;
-                inputData.positionCS = i.positionCS;
-                inputData.normalWS = n;
-                inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(i.positionWS);
-                inputData.shadowCoord = TransformWorldToShadowCoord(i.positionWS);
-                inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(i.positionCS);
-                inputData.shadowMask = half4(1, 1, 1, 1);
-                AmbientOcclusionFactor ao = GetScreenSpaceAmbientOcclusion(inputData.normalizedScreenSpaceUV);
-
-                // the key: its colour carries the cloud cookie and SSAO's direct share
-                Light key = GetMainLight(inputData, inputData.shadowMask, ao);
+                // the key; its cloud cookie (CloudShadows: 1 clear sky, 0 cloud, soft) is stepped like
+                // every other light edge, so a cloud's shadow is a flat patch of _CloudShade sunlight
+                Light key = GetMainLight();
+                key.shadowAttenuation = MainLightShadow(TransformWorldToShadowCoord(i.positionWS), i.positionWS, half4(1, 1, 1, 1), _MainLightOcclusionProbes);
+                #if defined(_LIGHT_COOKIES)
+                    key.color *= lerp(_CloudShade, 1.0, CelStep(0.5, SampleMainLightCookie(i.positionWS).r));
+                #endif
                 half NdotL = dot(n, key.direction);
-                half h = (NdotL * 0.5 + 0.5) * key.shadowAttenuation * key.distanceAttenuation;
-                half3 light = Bands(h, _ShadeColor.rgb * ao.indirectAmbientOcclusion, key.color);
-                light += SampleSH(n) * (_SkyBounce * ao.indirectAmbientOcclusion);
+                half sunlit = CelStep(0.5, key.shadowAttenuation * key.distanceAttenuation);
+                half lit = CelStep(_Terminator, NdotL) * sunlit;
+                half3 color = albedo * lerp(_ShadeColor.rgb, key.color + SampleSH(half3(0, 1, 0)) * _SkyBounce, lit);
 
-                // fills and any other light: soft wrapped lambert, no bands
-                #if defined(_ADDITIONAL_LIGHTS)
-                #if USE_CLUSTER_LIGHT_LOOP
-                [loop] for (uint lightIndex = 0; lightIndex < min(URP_FP_DIRECTIONAL_LIGHTS_COUNT, MAX_VISIBLE_LIGHTS); lightIndex++)
-                {
-                    Light l = GetAdditionalLight(lightIndex, inputData, inputData.shadowMask, ao);
-                    half wrap = saturate(dot(n, l.direction) * 0.6 + 0.4);
-                    light += l.color * (l.distanceAttenuation * l.shadowAttenuation * wrap * wrap);
-                }
-                #endif
-                uint pixelLightCount = GetAdditionalLightsCount();
-                LIGHT_LOOP_BEGIN(pixelLightCount)
-                    Light l = GetAdditionalLight(lightIndex, inputData, inputData.shadowMask, ao);
-                    half wrap = saturate(dot(n, l.direction) * 0.6 + 0.4);
-                    light += l.color * (l.distanceAttenuation * l.shadowAttenuation * wrap * wrap);
-                LIGHT_LOOP_END
-                #endif
+                // highlight: a small stepped spot where the albedo is grey or white (steel, linen)
+                half hi = max(albedo.r, max(albedo.g, albedo.b));
+                half lo = min(albedo.r, min(albedo.g, albedo.b));
+                half gloss = saturate(1.0 - 3.5 * (hi - lo) / max(hi, 1e-3));
+                half spec = CelStep(_SpecEdge, dot(n, normalize(key.direction + view))) * lit * gloss;
+                color += key.color * (spec * _SpecStrength);
 
-                half3 color = albedo * light;
-
-                // rim: a thin warm edge, strongest on the side the key lights
-                half fresnel = 1.0 - saturate(dot(n, inputData.viewDirectionWS));
-                half rim = smoothstep(1.0 - _RimWidth, 1.0 - _RimWidth + 0.12, fresnel) * saturate(NdotL + 0.6);
+                // rim: a stepped warm band inside the silhouette, on the side the sun reaches
+                half fresnel = 1.0 - saturate(dot(n, view));
+                half rim = CelStep(1.0 - _RimWidth, fresnel) * CelStep(-0.2, NdotL) * sunlit;
                 color += _RimColor.rgb * (rim * _RimStrength) * (albedo * 0.5 + 0.5);
 
                 color += _EmissionColor.rgb;
@@ -275,46 +258,6 @@ Shader "LLTacticalWar/Toon"
 
             float4 DepthVert(DepthAttributes v) : SV_POSITION { return TransformObjectToHClip(v.positionOS.xyz); }
             half4 NoColor() : SV_Target { return 0; }
-            ENDHLSL
-        }
-
-        // Depth and normals for SSAO's prepass.
-        Pass
-        {
-            Name "DepthNormals"
-            Tags { "LightMode" = "DepthNormals" }
-            ZWrite On
-            Cull Back
-
-            HLSLPROGRAM
-            #pragma target 3.5
-            #pragma vertex NormalsVert
-            #pragma fragment NormalsFrag
-            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
-
-            struct Varyings
-            {
-                float4 positionCS : SV_POSITION;
-                half3 normalWS : TEXCOORD0;
-            };
-
-            Varyings NormalsVert(DepthAttributes v)
-            {
-                Varyings o;
-                o.positionCS = TransformObjectToHClip(v.positionOS.xyz);
-                o.normalWS = TransformObjectToWorldNormal(v.normalOS);
-                return o;
-            }
-
-            half4 NormalsFrag(Varyings i) : SV_Target
-            {
-                float3 n = normalize(i.normalWS);
-                #if defined(_GBUFFER_NORMALS_OCT)
-                    return half4(PackFloat2To888(saturate(PackNormalOctQuadEncode(n) * 0.5 + 0.5)), 0);
-                #else
-                    return half4(n, 0);
-                #endif
-            }
             ENDHLSL
         }
     }

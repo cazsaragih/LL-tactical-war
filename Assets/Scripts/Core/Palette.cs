@@ -6,7 +6,8 @@ namespace LLTacticalWar
     // The art bible, as code. Every colour in the game reads from here.
     //   Style : KayKit chibi figures on a soft-gradient grass board, a field between a blue and a
     //           red castle in the KayKit Medieval world; two banner colours that read from across the map.
-    //           Painted-miniature toon: three light bands, cool blue-violet shadows, thin outlines.
+    //           Cel-shaded miniature: two flat tones with hard, anti-aliased edges (lit, and a cool
+    //           blue-violet shadow that cast shadows share), bold outlines in each surface's own dark.
     //   Mood  : late-morning sun from the south-west, warm key, cool sky bounce, blue-grey distance haze.
     public static class Palette
     {
@@ -38,8 +39,7 @@ namespace LLTacticalWar
         public static readonly Color Ink        = H("#2B3340");
         public static readonly Color Gold       = H("#F2C14E");
         public static readonly Color SunKey     = H("#FFF0D8");
-        public static readonly Color FillLight  = H("#B9C9E6");   // the shadowless lift from the south-east
-        public static readonly Color Shade      = H("#6B73A8");   // the toon shadow band's light: cool blue-violet, never black
+        public static readonly Color Shade      = H("#6B73A8");   // the cel shadow tone's light: cool blue-violet, never black
         public static readonly Color RimWarm    = H("#FFCF8A");   // the thin rim that lifts figures off the board
         public static readonly Color SkyTop     = H("#5F98DA");   // zenith: a clear late-morning blue
         public static readonly Color Haze       = H("#AFC0D3");   // horizon, fog and far atmosphere: blue-grey, never beige
@@ -87,7 +87,7 @@ namespace LLTacticalWar
             m.SetColor("_BaseColor", color);
             m.SetColor("_RimColor", RimWarm);
             m.SetFloat("_RimStrength", style.Rim);
-            m.SetFloat("_BandSoft", style.BandSoft);
+            m.SetFloat("_SpecStrength", style.Spec);
             m.SetColor("_ShadeColor", Color.Lerp(Shade, Color.white, style.ShadeLift));
             m.SetShaderPassEnabled("Outline", style.Outline);
             toonCache[key] = m;
@@ -184,23 +184,23 @@ namespace LLTacticalWar
 
     public enum Team { Player, Enemy }
 
-    // How the toon shader draws a surface (Assets/Shaders/Toon.shader): the warm rim, the softness of
-    // the band edges, how far its shadow band is lifted from Palette.Shade toward white, and whether
-    // it gets an outline.
+    // How the toon shader draws a surface (Assets/Shaders/Toon.shader): the stepped warm rim, the
+    // stepped highlight, how far its shadow tone is lifted from Palette.Shade toward white, and
+    // whether it gets an outline.
     public readonly struct ToonStyle : System.IEquatable<ToonStyle>
     {
-        public readonly float Rim, BandSoft, ShadeLift;
+        public readonly float Rim, Spec, ShadeLift;
         public readonly bool Outline;
 
-        ToonStyle(float rim, float bandSoft, float shadeLift, bool outline) { Rim = rim; BandSoft = bandSoft; ShadeLift = shadeLift; Outline = outline; }
+        ToonStyle(float rim, float spec, float shadeLift, bool outline) { Rim = rim; Spec = spec; ShadeLift = shadeLift; Outline = outline; }
 
-        public static readonly ToonStyle Figure = new ToonStyle(0.7f, 0.03f, 0f, true);    // units and what they carry
-        public static readonly ToonStyle Prop   = new ToonStyle(0f, 0.03f, 0f, true);      // scenery near the board
-        public static readonly ToonStyle Far    = new ToonStyle(0f, 0.05f, 0f, false);     // the horizon: no lines that far off
-        public static readonly ToonStyle Ground = new ToonStyle(0f, 0.2f, 0.3f, false);    // board and meadow: soft bands, light cast shadows, no lines
+        public static readonly ToonStyle Figure = new ToonStyle(0.6f, 0.5f, 0.45f, true);  // units and what they carry: rim and highlight
+        public static readonly ToonStyle Prop   = new ToonStyle(0f, 0f, 0.45f, true);      // scenery near the board
+        public static readonly ToonStyle Far    = new ToonStyle(0f, 0f, 0.55f, false);     // the horizon: paler shadows, no lines that far off
+        public static readonly ToonStyle Ground = new ToonStyle(0f, 0f, 0.35f, false);     // board and meadow: deeper cast shadows, no highlight, no lines
 
-        public bool Equals(ToonStyle o) => Rim == o.Rim && BandSoft == o.BandSoft && ShadeLift == o.ShadeLift && Outline == o.Outline;
+        public bool Equals(ToonStyle o) => Rim == o.Rim && Spec == o.Spec && ShadeLift == o.ShadeLift && Outline == o.Outline;
         public override bool Equals(object o) => o is ToonStyle t && Equals(t);
-        public override int GetHashCode() => (Rim, BandSoft, ShadeLift, Outline).GetHashCode();
+        public override int GetHashCode() => (Rim, Spec, ShadeLift, Outline).GetHashCode();
     }
 }

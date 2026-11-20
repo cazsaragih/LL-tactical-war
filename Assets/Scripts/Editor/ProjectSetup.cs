@@ -64,9 +64,9 @@ namespace LLTacticalWar.EditorTools
 
         // Shadows sized to the map camera: it sees the ground from about 26 to 38 m, so the second
         // cascade spans 12.6-39 m and holds the whole view; the battle camera's actors, 9-10 m off,
-        // sit in the first. SSAO stays subtle (contact darkening under figures and props) at half
-        // resolution. Every renderer draws the toon outlines (Toon.shader's "Outline" pass) in one
-        // sweep after the opaques.
+        // sit in the first. No SSAO: its soft smudges fight the cel tones, and the hard cast shadows
+        // already ground every figure and prop. Every renderer draws the toon outlines
+        // (Toon.shader's "Outline" pass) in one sweep after the opaques.
         public static void ConfigurePipeline()
         {
             var assets = Enumerable.Range(0, QualitySettings.names.Length).Select(QualitySettings.GetRenderPipelineAssetAt)
@@ -82,19 +82,25 @@ namespace LLTacticalWar.EditorTools
                 {
                     if (!(renderers.GetArrayElementAtIndex(i).objectReferenceValue is ScriptableRendererData data)) continue;
                     AddOutlines(data);
-                    foreach (var feature in data.rendererFeatures.Where(f => f != null && f.GetType().Name == "ScreenSpaceAmbientOcclusion"))
-                    {
-                        var ao = new SerializedObject(feature);
-                        ao.FindProperty("m_Settings.Intensity").floatValue = 0.6f;
-                        ao.FindProperty("m_Settings.Radius").floatValue = 0.35f;
-                        ao.FindProperty("m_Settings.DirectLightingStrength").floatValue = 0.3f;
-                        ao.FindProperty("m_Settings.Downsample").boolValue = true;
-                        ao.ApplyModifiedPropertiesWithoutUndo();
-                        EditorUtility.SetDirty(feature);
-                    }
+                    foreach (var feature in data.rendererFeatures.Where(f => f != null && f.GetType().Name == "ScreenSpaceAmbientOcclusion").ToList())
+                        RemoveFeature(data, feature);
                 }
             }
             AssetDatabase.SaveAssets();
+        }
+
+        static void RemoveFeature(ScriptableRendererData data, ScriptableRendererFeature feature)
+        {
+            int i = data.rendererFeatures.IndexOf(feature);
+            var so = new SerializedObject(data);
+            var features = so.FindProperty("m_RendererFeatures");
+            features.GetArrayElementAtIndex(i).objectReferenceValue = null;
+            features.DeleteArrayElementAtIndex(i);
+            so.FindProperty("m_RendererFeatureMap").DeleteArrayElementAtIndex(i);
+            so.ApplyModifiedPropertiesWithoutUndo();
+            AssetDatabase.RemoveObjectFromAsset(feature);
+            UnityEngine.Object.DestroyImmediate(feature, true);
+            EditorUtility.SetDirty(data);
         }
 
         static void AddOutlines(ScriptableRendererData data)

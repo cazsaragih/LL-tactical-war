@@ -3,13 +3,14 @@ using UnityEngine.Rendering.Universal;
 
 namespace LLTacticalWar
 {
-    // Slow cloud shadows: a soft, tiling cookie on the sun, drawn in code (a few wrapped blobs) and
-    // slid across the world so the light on the board breathes. Under a cloud the key keeps
-    // `Floor` of its strength; the toon shader dims its lit band, the bands stay where they are.
+    // Slow cloud shadows: a soft, tiling cookie on the sun (1 clear sky, 0 cloud), drawn in code (a few
+    // wrapped blobs) and slid across the world so the light on the board breathes. The toon shader
+    // steps the cookie at its middle, so each cloud is a flat patch with a crisp edge where the key
+    // keeps `Shade` of its strength; the cel tones stay where they are.
     public sealed class CloudShadows : MonoBehaviour
     {
         const int Size = 128, Blobs = 9, Seed = 21;
-        const float Floor = 0.7f;
+        const float Shade = 0.82f;
         const float Tile = 70f;                                    // world metres per cookie repeat
         static readonly Vector2 Wind = new Vector2(0.55f, 0.3f);   // metres per second
 
@@ -18,6 +19,7 @@ namespace LLTacticalWar
         public static void Attach(Light sun)
         {
             sun.cookie = Cookie();
+            Shader.SetGlobalFloat("_CloudShade", Shade);
             var shadows = sun.gameObject.AddComponent<CloudShadows>();
             shadows.data = sun.GetUniversalAdditionalLightData();
             shadows.data.lightCookieSize = new Vector2(Tile, Tile);
@@ -43,7 +45,7 @@ namespace LLTacticalWar
                         d.x -= Mathf.Round(d.x); d.y -= Mathf.Round(d.y);   // wrap, so the cookie tiles
                         cover = Mathf.Max(cover, b.k * Mathf.SmoothStep(1f, 0f, d.magnitude / b.r));
                     }
-                    byte v = (byte)(255f * Mathf.Lerp(1f, Floor, cover));
+                    byte v = (byte)(255f * (1f - cover));
                     px[y * Size + x] = new Color32(v, v, v, 255);
                 }
             var tex = new Texture2D(Size, Size, TextureFormat.RGBA32, true) { name = "CloudShadows", wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Bilinear };

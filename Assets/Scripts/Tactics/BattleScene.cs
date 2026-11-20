@@ -59,9 +59,9 @@ namespace LLTacticalWar
             cam.transform.SetParent(root, false);
             cam.Lens.FarClipPlane = 400f;
             cam.Priority = 0;
-            // shallow depth of field on the pair: both actors sharp, the backdrop softened but still read
+            // light depth of field on the pair: both actors sharp, the backdrop eased back, its cel edges still read
             focus = Prim.Pivot("Focus", root, Vector3.up);
-            GameManager.Lens(cam, 135f, 5f, CinemachineVolumeSettings.FocusTrackingMode.CustomTarget, focus);
+            GameManager.Lens(cam, 135f, 9f, CinemachineVolumeSettings.FocusTrackingMode.CustomTarget, focus);
             arrow = BuildArrow();
             bolt = BuildBolt();
             PoseCamera(0f);
